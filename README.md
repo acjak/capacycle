@@ -4,6 +4,8 @@ A self-hosted web app for standup capacity planning. Connects to Linear's GraphQ
 
 Built for big-screen standups — readable across the room.
 
+![Headroom screenshot](pub/screenshot.png)
+
 ## Features
 
 - **Capacity view** — Per-person breakdown of assigned story points vs capacity, with overload flags
