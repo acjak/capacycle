@@ -48,6 +48,14 @@ export const CYCLE_ISSUES_QUERY = `
           id identifier title priority estimate
           assignee { id name }
           state { id name type }
+          parent { id }
+          children {
+            nodes {
+              id identifier title priority estimate
+              assignee { id name }
+              state { id name type }
+            }
+          }
         }
       }
     }
@@ -62,6 +70,14 @@ export const BACKLOG_ISSUES_QUERY = `
           id identifier title priority estimate
           assignee { id name }
           state { id name type }
+          parent { id }
+          children {
+            nodes {
+              id identifier title priority estimate
+              assignee { id name }
+              state { id name type }
+            }
+          }
         }
       }
     }

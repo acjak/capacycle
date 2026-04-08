@@ -57,9 +57,10 @@ export function groupByAssignee(issues, people) {
   return groups;
 }
 
-// Enrich raw API issue nodes into a flat structure
-export function enrichIssues(nodes) {
-  return nodes.map((i) => ({
+// Enrich raw API issue nodes, building parent/child tree from both
+// the children field and the parent.id back-reference
+function enrichOne(i) {
+  return {
     id: i.id,
     identifier: i.identifier,
     title: i.title,
@@ -69,7 +70,57 @@ export function enrichIssues(nodes) {
     assigneeId: i.assignee?.id || null,
     stateName: i.state?.name || "",
     stateType: i.state?.type || "unstarted",
-  }));
+    parentId: i.parent?.id || null,
+    children: [],
+  };
+}
+
+export function enrichIssues(nodes) {
+  const all = nodes.map(enrichOne);
+  const byId = {};
+  all.forEach((i) => { byId[i.id] = i; });
+
+  // Build tree: attach children to parents using parent.id back-references
+  const childIds = new Set();
+  all.forEach((i) => {
+    if (i.parentId && byId[i.parentId]) {
+      // Avoid duplicates
+      if (!byId[i.parentId].children.find((ch) => ch.id === i.id)) {
+        byId[i.parentId].children.push(i);
+      }
+      childIds.add(i.id);
+    }
+  });
+
+  // Also pull in children from the API's children field that are in this set
+  nodes.forEach((raw) => {
+    const parent = byId[raw.id];
+    if (!parent) return;
+    (raw.children?.nodes || []).forEach((ch) => {
+      if (byId[ch.id] && !parent.children.find((c) => c.id === ch.id)) {
+        parent.children.push(byId[ch.id]);
+        childIds.add(ch.id);
+      }
+    });
+  });
+
+  // Return only top-level issues (not children)
+  return all.filter((i) => !childIds.has(i.id));
+}
+
+// Total estimate for an issue including its children
+export function totalEstimate(issue) {
+  return (issue.estimate || 0) + (issue.children || []).reduce((s, ch) => s + (ch.estimate || 0), 0);
+}
+
+// Flat list of an issue + its children (for counting)
+export function flatIssues(issues) {
+  const result = [];
+  issues.forEach((i) => {
+    result.push(i);
+    (i.children || []).forEach((ch) => result.push(ch));
+  });
+  return result;
 }
 
 // Load/save capacity settings from localStorage (legacy, used for backlog fallback)

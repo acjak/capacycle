@@ -4,7 +4,7 @@ import {
   CYCLE_ISSUES_QUERY, BACKLOG_ISSUES_QUERY,
 } from "./api.js";
 import {
-  pickActiveCycle, groupByAssignee, enrichIssues,
+  pickActiveCycle, groupByAssignee, enrichIssues, flatIssues,
   loadCapacities, saveCapacities, loadAvailability, computeCapacities, formatDate,
 } from "./utils.js";
 import { useTheme } from "./theme.jsx";
@@ -81,7 +81,8 @@ export default function App() {
       const enriched = enrichIssues(issueNodes);
       setIssues(enriched);
 
-      const fromIssues = enriched.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
+      const allFlat = flatIssues(enriched);
+      const fromIssues = allFlat.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
       const uniq = [...new Set([...members, ...fromIssues])];
       setPeople(uniq);
 
@@ -107,7 +108,8 @@ export default function App() {
       const iData = await linearQuery(CYCLE_ISSUES_QUERY, { cycleId: cycle.id });
       const enriched = enrichIssues(iData.cycle.issues.nodes);
       setIssues(enriched);
-      const fromIssues = enriched.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
+      const allFlat = flatIssues(enriched);
+      const fromIssues = allFlat.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
       const uniq = [...new Set([...teamMembers, ...fromIssues])];
       setPeople(uniq);
       const avail = await loadAvailability(selectedTeam.id, cycle.id);
@@ -126,10 +128,11 @@ export default function App() {
   };
 
   const byPerson = groupByAssignee(issues, people);
-  const totalPts = issues.reduce((s, i) => s + (i.estimate || 0), 0);
+  const allFlat = flatIssues(issues);
+  const totalPts = allFlat.reduce((s, i) => s + (i.estimate || 0), 0);
   const totalCap = people.reduce((s, p) => s + (capacities[p] || 0), 0);
-  const donePts = issues.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
-  const unestCount = issues.filter((i) => !i.estimate).length;
+  const donePts = allFlat.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+  const unestCount = allFlat.filter((i) => !i.estimate).length;
   const pctDone = totalPts > 0 ? Math.round((donePts / totalPts) * 100) : 0;
 
   const c = colors;
@@ -277,7 +280,7 @@ export default function App() {
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5, fontSize: 10, color: c.textMuted }}>Per-person load</div>
                     {people.map((p) => {
-                      const pI = byPerson[p] || [];
+                      const pI = flatIssues(byPerson[p] || []);
                       const pts = pI.reduce((s, i) => s + (i.estimate || 0), 0);
                       const dp = pI.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
                       return (
