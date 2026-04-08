@@ -86,7 +86,7 @@ export default function App() {
       setPeople(uniq);
 
       if (picked) {
-        const avail = loadAvailability(team.id, picked.id);
+        const avail = await loadAvailability(team.id, picked.id);
         setCapacities(computeCapacities(avail, uniq, picked.startsAt, picked.endsAt));
       } else {
         const saved = loadCapacities(team.id);
@@ -110,7 +110,7 @@ export default function App() {
       const fromIssues = enriched.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
       const uniq = [...new Set([...teamMembers, ...fromIssues])];
       setPeople(uniq);
-      const avail = loadAvailability(selectedTeam.id, cycle.id);
+      const avail = await loadAvailability(selectedTeam.id, cycle.id);
       setCapacities(computeCapacities(avail, uniq, cycle.startsAt, cycle.endsAt));
     } catch (e) {
       setError("Failed: " + e.message);

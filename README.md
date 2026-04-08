@@ -23,7 +23,7 @@ Single-page app with a thin Express proxy to avoid CORS issues.
 Browser (React SPA)  →  Express proxy (/api/linear)  →  api.linear.app/graphql
 ```
 
-No database, no session state. Capacity settings and theme preference are stored in the browser's localStorage.
+No database, no session state. Availability data is stored as JSON files on the server (in `data/`), so all users share the same capacity settings. Theme preference is stored in the browser's localStorage.
 
 ## Prerequisites
 
@@ -91,14 +91,14 @@ When a cycle is active, capacity is derived from workdays:
 3. For each person, toggle days as **available**, **half day**, or **off**
 4. Capacity = `(workdays - full_days_off - half_days × 0.5) × points_per_day`
 
-Availability data is stored in localStorage per team and cycle, so each cycle has independent availability settings.
+Availability data is stored on the server as JSON files in `data/`, keyed by team and cycle. Any user can update availability and all users see the same data. In Docker, `data/` is mounted as a volume so it persists across container rebuilds.
 
 When no cycle is active (backlog view), capacity falls back to a simple number input per person.
 
 ## Tech Stack
 
 - **Frontend:** React 18, Vite, Recharts
-- **Backend:** Express (minimal GraphQL proxy)
+- **Backend:** Express (GraphQL proxy + availability storage)
 - **Styling:** Inline styles with theme context (no CSS framework)
 
 ## Security Notes

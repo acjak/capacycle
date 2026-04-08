@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getWorkdays, loadAvailability, saveAvailability, computeCapacities } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 
@@ -15,7 +15,9 @@ function dayLabel(d) {
 
 export default function AvailabilityCalendar({ people, cycle, teamId, onCapacitiesChange }) {
   const { colors: c } = useTheme();
-  const [availability, setAvailability] = useState(() => loadAvailability(teamId, cycle.id));
+  const [availability, setAvailability] = useState({ pointsPerDay: 2, people: {} });
+  const [loaded, setLoaded] = useState(false);
+  const saveTimer = useRef(null);
 
   const stateColors = {
     available: { bg: `${c.green}22`, border: c.green, label: "" },
@@ -23,18 +25,34 @@ export default function AvailabilityCalendar({ people, cycle, teamId, onCapaciti
     full: { bg: `${c.red}1a`, border: `${c.red}44`, label: "\u2715" },
   };
 
-  // Reset when cycle or team changes
+  // Load from server when cycle or team changes
   useEffect(() => {
-    const loaded = loadAvailability(teamId, cycle.id);
-    setAvailability(loaded);
+    let cancelled = false;
+    setLoaded(false);
+    loadAvailability(teamId, cycle.id).then((data) => {
+      if (!cancelled) {
+        setAvailability(data);
+        setLoaded(true);
+      }
+    });
+    return () => { cancelled = true; };
   }, [teamId, cycle.id]);
 
-  // Persist and notify on every change
+  // Compute and notify capacities on every change
   useEffect(() => {
-    saveAvailability(teamId, cycle.id, availability);
     const caps = computeCapacities(availability, people, cycle.startsAt, cycle.endsAt);
     onCapacitiesChange(caps);
-  }, [availability, people, cycle, teamId, onCapacitiesChange]);
+  }, [availability, people, cycle, onCapacitiesChange]);
+
+  // Debounced save to server
+  useEffect(() => {
+    if (!loaded) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveAvailability(teamId, cycle.id, availability);
+    }, 500);
+    return () => clearTimeout(saveTimer.current);
+  }, [availability, loaded, teamId, cycle.id]);
 
   const workdays = getWorkdays(cycle.startsAt, cycle.endsAt);
 

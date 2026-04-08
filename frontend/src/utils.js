@@ -102,16 +102,21 @@ export function getWorkdays(startsAt, endsAt) {
   return days;
 }
 
-export function loadAvailability(teamId, cycleId) {
+export async function loadAvailability(teamId, cycleId) {
   try {
-    const raw = localStorage.getItem(`availability_${teamId}_${cycleId}`);
-    return raw ? JSON.parse(raw) : { pointsPerDay: 2, people: {} };
-  } catch { return { pointsPerDay: 2, people: {} }; }
+    const res = await fetch(`/api/availability/${teamId}/${cycleId}`);
+    if (res.ok) return await res.json();
+  } catch { /* fall through */ }
+  return { pointsPerDay: 2, people: {} };
 }
 
-export function saveAvailability(teamId, cycleId, data) {
+export async function saveAvailability(teamId, cycleId, data) {
   try {
-    localStorage.setItem(`availability_${teamId}_${cycleId}`, JSON.stringify(data));
+    await fetch(`/api/availability/${teamId}/${cycleId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
   } catch { /* ignore */ }
 }
 

@@ -1,5 +1,6 @@
 node_modules/
 frontend/dist/
+data/
 .env
 .enc
 *.log
