@@ -3,8 +3,8 @@ import CapacityBar from "./CapacityBar.jsx";
 import { statusIcon, statusColor, priorityColor, priorityLabel, initials, totalEstimate, flatIssues } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 
-function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, childrenExpanded = false, onToggleChildren }) {
-  const est = hasChildren && !childrenExpanded ? totalEstimate(issue) : issue.estimate;
+function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, childrenExpanded = false, onToggleChildren, ghost = false }) {
+  const est = ghost ? null : (hasChildren && !childrenExpanded ? totalEstimate(issue) : issue.estimate);
   const showToggle = hasChildren;
 
   return (
@@ -16,6 +16,7 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
         padding: "5px 4px", borderTop: `1px solid ${c.divider}`, fontSize: 13,
         borderRadius: 4, margin: "0 -4px", transition: "background 0.1s",
         paddingLeft: indent > 0 ? 4 : 4,
+        opacity: ghost ? 0.45 : 1,
       }}>
       {/* Tree indent */}
       {indent > 0 && (
@@ -61,6 +62,20 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
           flex: 1, color: c.textSecondary, textDecoration: "none",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>{issue.title}</a>
+      {issue.milestoneName && (
+        <span style={{
+          fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+          background: `${c.accent}18`, color: c.accent, fontWeight: 500,
+          whiteSpace: "nowrap",
+        }}>{issue.milestoneName}</span>
+      )}
+      {issue.projectName && (
+        <span style={{
+          fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+          background: `${c.textMuted}18`, color: c.textMuted, fontWeight: 500,
+          whiteSpace: "nowrap",
+        }}>{issue.projectName}</span>
+      )}
       {issue.priority > 0 && (
         <span style={{
           fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
@@ -69,11 +84,11 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
       )}
       <span style={{
         fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
-        color: est ? c.text : c.yellow,
+        color: ghost ? "transparent" : est ? c.text : c.yellow,
         fontWeight: est ? 600 : 400,
         minWidth: 28, textAlign: "right", flexShrink: 0,
       }}>
-        {est ? `${est}pt` : "\u2014"}
+        {ghost ? "" : est ? `${est}pt` : "\u2014"}
       </span>
     </div>
   );
@@ -88,12 +103,17 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
     if (expandedProp !== undefined) setExpanded(expandedProp);
   }, [expandedProp]);
 
-  const allFlat = flatIssues(issues);
-  const totalEst = allFlat.reduce((s, i) => s + (i.estimate || 0), 0);
-  const inProg = allFlat.filter((i) => i.stateType === "started");
-  const todo = allFlat.filter((i) => i.stateType === "unstarted" || i.stateType === "backlog");
-  const done = allFlat.filter((i) => i.stateType === "completed");
-  const unest = allFlat.filter((i) => !i.estimate);
+  // For stats, exclude ghost parents (only count their children which are assigned here)
+  const ownIssues = [];
+  issues.forEach((i) => {
+    if (!i.ghost) ownIssues.push(i);
+    (i.children || []).forEach((ch) => ownIssues.push(ch));
+  });
+  const totalEst = ownIssues.reduce((s, i) => s + (i.estimate || 0), 0);
+  const inProg = ownIssues.filter((i) => i.stateType === "started");
+  const todo = ownIssues.filter((i) => i.stateType === "unstarted" || i.stateType === "backlog");
+  const done = ownIssues.filter((i) => i.stateType === "completed");
+  const unest = ownIssues.filter((i) => !i.estimate);
   const over = capacity > 0 && totalEst > capacity;
 
   const sortedIssues = [...issues].sort((a, b) => {
@@ -148,15 +168,18 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
             <div style={{ marginTop: 14 }}>
               {sortedIssues.map((issue) => {
                 const hasChildren = issue.children && issue.children.length > 0;
-                const childrenOpen = !!expandedParents[issue.id];
+                const isGhost = !!issue.ghost;
+                // Ghost parents always show children, normal parents are togglable
+                const childrenOpen = isGhost || !!expandedParents[issue.id];
                 return (
-                  <React.Fragment key={issue.id}>
+                  <React.Fragment key={issue.id + (isGhost ? "-ghost" : "")}>
                     <IssueRow
                       issue={issue}
                       c={c}
-                      hasChildren={hasChildren}
+                      hasChildren={!isGhost && hasChildren}
                       childrenExpanded={childrenOpen}
                       onToggleChildren={() => toggleParent(issue.id)}
+                      ghost={isGhost}
                     />
                     {hasChildren && childrenOpen && issue.children.map((child, idx) => (
                       <IssueRow

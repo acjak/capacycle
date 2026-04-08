@@ -44,16 +44,46 @@ export function pickActiveCycle(cycles) {
   return cycles[cycles.length - 1] || null;
 }
 
-// Group issues by assignee name
+// Group issues by assignee name, splitting children to their own assignee.
+// When a child is assigned to someone else, show the parent as a grayed-out
+// context row (ghost: true) under that person with the child nested below it.
 export function groupByAssignee(issues, people) {
   const groups = {};
   people.forEach((p) => { groups[p] = []; });
   groups["Unassigned"] = [];
-  issues.forEach((i) => {
-    const key = i.assigneeName || "Unassigned";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(i);
+
+  issues.forEach((parent) => {
+    const sameChildren = [];
+    const parentKey = parent.assigneeName || "Unassigned";
+
+    // Collect children assigned elsewhere, grouped by their assignee
+    const otherByAssignee = {};
+
+    (parent.children || []).forEach((ch) => {
+      const childKey = ch.assigneeName || "Unassigned";
+      if (childKey === parentKey) {
+        sameChildren.push(ch);
+      } else {
+        if (!otherByAssignee[childKey]) otherByAssignee[childKey] = [];
+        otherByAssignee[childKey].push({ ...ch, children: [] });
+      }
+    });
+
+    // Parent with its same-assignee children
+    if (!groups[parentKey]) groups[parentKey] = [];
+    groups[parentKey].push({ ...parent, children: sameChildren });
+
+    // For each other assignee, add a ghost parent with their children nested
+    for (const [assignee, children] of Object.entries(otherByAssignee)) {
+      if (!groups[assignee]) groups[assignee] = [];
+      groups[assignee].push({
+        ...parent,
+        ghost: true,
+        children,
+      });
+    }
   });
+
   return groups;
 }
 
@@ -70,6 +100,8 @@ function enrichOne(i) {
     assigneeId: i.assignee?.id || null,
     stateName: i.state?.name || "",
     stateType: i.state?.type || "unstarted",
+    projectName: i.project?.name || null,
+    milestoneName: i.projectMilestone?.name || null,
     parentId: i.parent?.id || null,
     children: [],
   };

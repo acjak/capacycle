@@ -19,6 +19,14 @@ export async function linearQuery(query, variables = {}) {
 
 // --- Queries ---
 
+const ISSUE_FIELDS = `
+  id identifier title priority estimate
+  assignee { id name }
+  state { id name type }
+  project { name }
+  projectMilestone { name }
+`;
+
 export const TEAMS_QUERY = `query { teams { nodes { id name } } }`;
 
 export const TEAM_DATA_QUERY = `
@@ -45,15 +53,11 @@ export const CYCLE_ISSUES_QUERY = `
     cycle(id: $cycleId) {
       issues {
         nodes {
-          id identifier title priority estimate
-          assignee { id name }
-          state { id name type }
+          ${ISSUE_FIELDS}
           parent { id }
           children {
             nodes {
-              id identifier title priority estimate
-              assignee { id name }
-              state { id name type }
+              ${ISSUE_FIELDS}
             }
           }
         }
@@ -67,15 +71,11 @@ export const BACKLOG_ISSUES_QUERY = `
     team(id: $teamId) {
       issues(filter: { state: { type: { nin: ["completed", "canceled"] } } }, first: 250) {
         nodes {
-          id identifier title priority estimate
-          assignee { id name }
-          state { id name type }
+          ${ISSUE_FIELDS}
           parent { id }
           children {
             nodes {
-              id identifier title priority estimate
-              assignee { id name }
-              state { id name type }
+              ${ISSUE_FIELDS}
             }
           }
         }
