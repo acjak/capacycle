@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import CapacityBar from "./CapacityBar.jsx";
 import { statusIcon, statusColor, priorityColor, priorityLabel, initials } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 
-export default function PersonCard({ name, issues, capacity }) {
+export default function PersonCard({ name, issues, capacity, expanded: expandedProp }) {
   const { colors: c } = useTheme();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(expandedProp ?? true);
+
+  useEffect(() => {
+    if (expandedProp !== undefined) setExpanded(expandedProp);
+  }, [expandedProp]);
   const totalEst = issues.reduce((s, i) => s + (i.estimate || 0), 0);
   const inProg = issues.filter((i) => i.stateType === "started");
   const todo = issues.filter((i) => i.stateType === "unstarted" || i.stateType === "backlog");
@@ -55,10 +59,14 @@ export default function PersonCard({ name, issues, capacity }) {
           {issues.length > 0 && (
             <div style={{ marginTop: 14 }}>
               {[...inProg, ...todo, ...done].map((issue) => (
-                <div key={issue.id} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "5px 0", borderTop: `1px solid ${c.divider}`, fontSize: 13,
-                }}>
+                <div key={issue.id}
+                  onMouseEnter={(e) => e.currentTarget.style.background = c.accentBg}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "5px 4px", borderTop: `1px solid ${c.divider}`, fontSize: 13,
+                    borderRadius: 4, margin: "0 -4px", transition: "background 0.1s",
+                  }}>
                   <span style={{
                     fontSize: 12, width: 16, textAlign: "center",
                     color: statusColor(issue.stateType),

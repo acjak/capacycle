@@ -33,6 +33,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [burndownMode, setBurndownMode] = useState("points");
   const [activeTab, setActiveTab] = useState("capacity");
+  const [allExpanded, setAllExpanded] = useState(true);
 
   // Initial load: fetch teams
   useEffect(() => {
@@ -296,8 +297,15 @@ export default function App() {
           {/* Capacity tab */}
           {activeTab === "capacity" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {people.map((p) => <PersonCard key={p} name={p} issues={byPerson[p] || []} capacity={capacities[p] || 0} />)}
-              {(byPerson["Unassigned"]?.length || 0) > 0 && <PersonCard name="Unassigned" issues={byPerson["Unassigned"]} capacity={0} />}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => setAllExpanded((e) => !e)} style={{
+                  background: c.card, border: `1px solid ${c.border}`, borderRadius: 5,
+                  padding: "4px 10px", fontSize: 11, color: c.textMuted,
+                  cursor: "pointer", fontFamily: SANS,
+                }}>{allExpanded ? "Collapse all" : "Expand all"}</button>
+              </div>
+              {people.map((p) => <PersonCard key={p} name={p} issues={byPerson[p] || []} capacity={capacities[p] || 0} expanded={allExpanded} />)}
+              {(byPerson["Unassigned"]?.length || 0) > 0 && <PersonCard name="Unassigned" issues={byPerson["Unassigned"]} capacity={0} expanded={allExpanded} />}
               {issues.length === 0 && <div style={{ textAlign: "center", padding: 40, color: c.textMuted, fontSize: 13 }}>No issues found.</div>}
             </div>
           )}

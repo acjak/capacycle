@@ -9,7 +9,7 @@ const STATE_CYCLE = ["available", "half", "full"];
 
 function dayLabel(d) {
   const day = d.toLocaleDateString("en-US", { weekday: "short" });
-  const num = `${d.getMonth() + 1}/${d.getDate()}`;
+  const num = `${d.getDate()}/${d.getMonth() + 1}`;
   return { day, num };
 }
 
