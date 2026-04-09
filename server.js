@@ -1,10 +1,19 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { Server } from "socket.io";
+import {
+  getFullBoard, resetBoard, addColumn, updateColumn, deleteColumn,
+  addCard, updateCard, moveCard, deleteCard, toggleVote,
+  getActualHours, setActualHours,
+} from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
 const DATA_DIR = path.join(__dirname, "data");
@@ -45,7 +54,6 @@ app.post("/api/linear", express.json(), async (req, res) => {
 
 // Availability API
 function availabilityPath(teamId, cycleId) {
-  // Sanitize IDs to prevent path traversal
   const safe = (s) => s.replace(/[^a-zA-Z0-9_-]/g, "");
   return path.join(DATA_DIR, `availability_${safe(teamId)}_${safe(cycleId)}.json`);
 }
@@ -75,12 +83,140 @@ app.put("/api/availability/:teamId/:cycleId", express.json(), (req, res) => {
   }
 });
 
+// Board REST endpoint (initial load)
+app.get("/api/board/:teamId/:cycleId", (req, res) => {
+  try {
+    const voterId = req.query.voterId || null;
+    const board = getFullBoard(req.params.teamId, req.params.cycleId, voterId);
+    res.json(board);
+  } catch (err) {
+    console.error("Board error:", err.message);
+    res.status(500).json({ error: "Failed to load board" });
+  }
+});
+
+// Actual hours API
+app.post("/api/actual-hours", express.json(), (req, res) => {
+  try {
+    const { issueIds } = req.body;
+    const hours = getActualHours(issueIds || []);
+    res.json(hours);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/actual-hours/:issueId", express.json(), (req, res) => {
+  try {
+    setActualHours(req.params.issueId, req.body.hours || 0);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Board socket.io
+io.on("connection", (socket) => {
+  let currentRoom = null;
+
+  socket.on("join-board", ({ teamId, cycleId, voterId }) => {
+    if (currentRoom) socket.leave(currentRoom);
+    currentRoom = `board:${teamId}:${cycleId}`;
+    socket.join(currentRoom);
+    socket.teamId = teamId;
+    socket.cycleId = cycleId;
+    socket.voterId = voterId;
+  });
+
+  socket.on("add-card", ({ columnId, boardId, text }) => {
+    try {
+      const card = addCard(columnId, boardId, text);
+      io.to(currentRoom).emit("card-added", card);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("update-card", ({ cardId, text }) => {
+    try {
+      const card = updateCard(cardId, text);
+      io.to(currentRoom).emit("card-updated", card);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("move-card", ({ cardId, newColumnId, newPosition }) => {
+    try {
+      const card = moveCard(cardId, newColumnId, newPosition);
+      io.to(currentRoom).emit("card-moved", card);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("delete-card", ({ cardId }) => {
+    try {
+      deleteCard(cardId);
+      io.to(currentRoom).emit("card-deleted", { cardId });
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("toggle-vote", ({ cardId, voterId }) => {
+    try {
+      const result = toggleVote(cardId, voterId);
+      io.to(currentRoom).emit("vote-updated", { ...result, voterId });
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("add-column", ({ boardId, title, color }) => {
+    try {
+      const col = addColumn(boardId, title, color);
+      io.to(currentRoom).emit("column-added", col);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("update-column", ({ columnId, title, position, color }) => {
+    try {
+      const col = updateColumn(columnId, title, position, color);
+      io.to(currentRoom).emit("column-updated", col);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("delete-column", ({ columnId }) => {
+    try {
+      deleteColumn(columnId);
+      io.to(currentRoom).emit("column-deleted", { columnId });
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("reset-board", ({ teamId, cycleId, preset }) => {
+    try {
+      resetBoard(teamId, cycleId, preset);
+      const board = getFullBoard(teamId, cycleId, socket.voterId);
+      io.to(currentRoom).emit("board-reset", board);
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+});
+
 // Serve frontend
 app.use(express.static(path.join(__dirname, "frontend", "dist")));
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Headroom running on http://localhost:${PORT}`);
 });

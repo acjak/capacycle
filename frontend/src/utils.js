@@ -98,10 +98,12 @@ function enrichOne(i) {
     estimate: i.estimate,
     assigneeName: i.assignee?.name || "Unassigned",
     assigneeId: i.assignee?.id || null,
+    avatarUrl: i.assignee?.avatarUrl || null,
     stateName: i.state?.name || "",
     stateType: i.state?.type || "unstarted",
     projectName: i.project?.name || null,
     milestoneName: i.projectMilestone?.name || null,
+    completedAt: i.completedAt || null,
     parentId: i.parent?.id || null,
     children: [],
   };

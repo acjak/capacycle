@@ -82,7 +82,7 @@ export default function AvailabilityCalendar({ people, cycle, teamId, onCapaciti
           Availability &middot; Cycle {cycle.number}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 14, color: c.textMuted }}>pts/day</span>
+          <span style={{ fontSize: 14, color: c.textMuted }}>hrs/day</span>
           <input
             type="number" min={0.5} step={0.5}
             value={availability.pointsPerDay}
@@ -157,7 +157,7 @@ export default function AvailabilityCalendar({ people, cycle, teamId, onCapaciti
                     color: c.text, textAlign: "right", fontWeight: 600,
                     borderTop: `1px solid ${c.divider}`, whiteSpace: "nowrap",
                   }}>
-                    {caps[person]}pt
+                    {caps[person]}h
                   </td>
                 </tr>
               );

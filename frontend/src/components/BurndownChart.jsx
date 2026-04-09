@@ -3,37 +3,53 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Area, AreaChart, ReferenceLine,
 } from "recharts";
-import { formatDate } from "../utils.js";
+import { formatDate, flatIssues } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 
-export default function BurndownChart({ cycle, mode = "points" }) {
+export default function BurndownChart({ cycle, mode = "hours", issues = [] }) {
   const { colors: c } = useTheme();
-  const scopeHist = mode === "points" ? cycle.scopeHistory : cycle.issueCountHistory;
-  const completedHist = mode === "points" ? cycle.completedScopeHistory : cycle.completedIssueCountHistory;
-  const inProgHist = mode === "points" ? (cycle.inProgressScopeHistory || []) : [];
+  const scopeHist = mode === "hours" ? cycle.scopeHistory : cycle.issueCountHistory;
+  const completedHist = mode === "hours" ? cycle.completedScopeHistory : cycle.completedIssueCountHistory;
+  const inProgHist = mode === "hours" ? (cycle.inProgressScopeHistory || []) : [];
 
   const start = new Date(cycle.startsAt);
   const end = new Date(cycle.endsAt);
   const totalDays = Math.ceil((end - start) / 86400000);
   const today = new Date();
+  const todayIdx = Math.floor((today - start) / 86400000);
   const hasData = scopeHist && scopeHist.length > 0;
+
+  // Compute live values from current issues for today
+  const allFlat = flatIssues(issues);
+  const liveScope = mode === "hours"
+    ? allFlat.reduce((s, i) => s + (i.estimate || 0), 0)
+    : allFlat.length;
+  const liveCompleted = mode === "hours"
+    ? allFlat.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0)
+    : allFlat.filter((i) => i.stateType === "completed").length;
+  const liveInProgress = mode === "hours"
+    ? allFlat.filter((i) => i.stateType === "started").reduce((s, i) => s + (i.estimate || 0), 0)
+    : allFlat.filter((i) => i.stateType === "started").length;
 
   const chartData = [];
 
   if (hasData) {
     const totalScope = scopeHist[0] || 0;
-    for (let i = 0; i < scopeHist.length; i++) {
+    for (let i = 0; i <= totalDays; i++) {
       const d = new Date(start.getTime() + i * 86400000);
-      const scope = scopeHist[i] || 0;
-      const completed = completedHist[i] || 0;
+      const hasHistoryForDay = i < scopeHist.length;
+      const isToday = i === todayIdx && !hasHistoryForDay;
+      const scope = hasHistoryForDay ? (scopeHist[i] || 0) : isToday ? liveScope : undefined;
+      const completed = hasHistoryForDay ? (completedHist[i] || 0) : isToday ? liveCompleted : undefined;
+      const inProg = hasHistoryForDay ? (inProgHist[i] || 0) : isToday ? liveInProgress : undefined;
       chartData.push({
         day: i,
         label: formatDate(d),
-        remaining: Math.max(0, scope - completed),
+        remaining: (hasHistoryForDay || isToday) ? Math.max(0, scope - completed) : undefined,
         ideal: Math.max(0, Math.round((totalScope - (totalScope / totalDays) * i) * 10) / 10),
         scope,
         completed,
-        inProgress: inProgHist[i] || 0,
+        inProgress: inProg,
       });
     }
   } else {
@@ -42,8 +58,6 @@ export default function BurndownChart({ cycle, mode = "points" }) {
       chartData.push({ day: i, label: formatDate(d), remaining: null, ideal: null });
     }
   }
-
-  const todayIdx = Math.floor((today - start) / 86400000);
 
   if (!hasData) {
     return (
@@ -98,9 +112,9 @@ export default function BurndownChart({ cycle, mode = "points" }) {
               label={{ value: "Today", position: "top", fontSize: 10, fill: c.textMuted }} />
           )}
           <Area type="monotone" dataKey="remaining" stroke={c.accent} strokeWidth={2}
-            fill="url(#burndownGrad)" dot={false} name="Remaining" />
+            fill="url(#burndownGrad)" dot={false} name="Remaining" connectNulls={false} />
           <Area type="monotone" dataKey="ideal" stroke={c.textMuted} strokeDasharray="6 3"
-            strokeWidth={1.5} fill="none" dot={false} name="Ideal" />
+            strokeWidth={1.5} fill="none" dot={false} name="Ideal" connectNulls />
         </AreaChart>
       </ResponsiveContainer>
     </div>

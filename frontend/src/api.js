@@ -20,8 +20,8 @@ export async function linearQuery(query, variables = {}) {
 // --- Queries ---
 
 const ISSUE_FIELDS = `
-  id identifier title priority estimate
-  assignee { id name }
+  id identifier title priority estimate completedAt
+  assignee { id name avatarUrl }
   state { id name type }
   project { name }
   projectMilestone { name }
@@ -34,7 +34,7 @@ export const TEAM_DATA_QUERY = `
     team(id: $teamId) {
       id
       name
-      members { nodes { id name displayName email } }
+      members { nodes { id name displayName email avatarUrl } }
       states { nodes { id name type position } }
       cycles(orderBy: createdAt) {
         nodes {
@@ -60,6 +60,23 @@ export const CYCLE_ISSUES_QUERY = `
               ${ISSUE_FIELDS}
             }
           }
+        }
+      }
+    }
+  }
+`;
+
+export const ISSUE_HISTORY_QUERY = `
+  query IssueHistory($issueId: String!) {
+    issue(id: $issueId) {
+      id
+      history {
+        nodes {
+          createdAt
+          fromEstimate
+          toEstimate
+          fromState { type }
+          toState { type }
         }
       }
     }

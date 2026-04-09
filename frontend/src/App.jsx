@@ -12,6 +12,9 @@ import BurndownChart from "./components/BurndownChart.jsx";
 import CapacityBar from "./components/CapacityBar.jsx";
 import PersonCard from "./components/PersonCard.jsx";
 import AvailabilityCalendar from "./components/AvailabilityCalendar.jsx";
+import VelocityChart from "./components/VelocityChart.jsx";
+import KanbanBoard from "./components/KanbanBoard.jsx";
+import EstimatesView from "./components/EstimatesView.jsx";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
@@ -31,9 +34,10 @@ export default function App() {
   const [people, setPeople] = useState([]);
   const [capacities, setCapacities] = useState({});
   const [showSettings, setShowSettings] = useState(false);
-  const [burndownMode, setBurndownMode] = useState("points");
+  const [burndownMode, setBurndownMode] = useState("hours");
   const [activeTab, setActiveTab] = useState("capacity");
   const [allExpanded, setAllExpanded] = useState(true);
+  const [avatars, setAvatars] = useState({});
 
   // Initial load: fetch teams
   useEffect(() => {
@@ -62,8 +66,11 @@ export default function App() {
       const allCycles = (t.cycles.nodes || []).sort((a, b) => a.number - b.number);
       setCycles(allCycles);
 
-      const members = (t.members?.nodes || []).map((m) => m.name || m.displayName);
+      const memberNodes = t.members?.nodes || [];
+      const members = memberNodes.map((m) => m.name || m.displayName);
       setTeamMembers(members);
+      const avMap = {};
+      memberNodes.forEach((m) => { if (m.avatarUrl) avMap[m.name || m.displayName] = m.avatarUrl; });
 
       const picked = pickActiveCycle(allCycles);
       setActiveCycle(picked);
@@ -82,6 +89,8 @@ export default function App() {
       setIssues(enriched);
 
       const allFlat = flatIssues(enriched);
+      allFlat.forEach((i) => { if (i.avatarUrl) avMap[i.assigneeName] = i.avatarUrl; });
+      setAvatars(avMap);
       const fromIssues = allFlat.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
       const uniq = [...new Set([...members, ...fromIssues])];
       setPeople(uniq);
@@ -201,10 +210,10 @@ export default function App() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
             {[
               { label: "Issues", value: issues.length, color: c.text },
-              { label: "Assigned", value: `${totalPts}pt`, color: c.accent },
-              { label: "Done", value: `${donePts}pt`, color: c.green },
+              { label: "Assigned", value: `${totalPts}h`, color: c.accent },
+              { label: "Done", value: `${donePts}h`, color: c.green },
               { label: "Progress", value: `${pctDone}%`, color: pctDone > 60 ? c.green : c.textSecondary },
-              { label: "Capacity", value: `${totalCap}pt`, color: totalPts > totalCap ? c.red : c.textSecondary },
+              { label: "Capacity", value: `${totalCap}h`, color: totalPts > totalCap ? c.red : c.textSecondary },
               { label: "Unestimated", value: unestCount, color: unestCount > 0 ? c.yellow : c.textMuted },
             ].map((s) => (
               <div key={s.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
@@ -225,7 +234,7 @@ export default function App() {
           )}
           {showSettings && !activeCycle && (
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: c.textMuted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Capacity per person (pts/cycle)</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: c.textMuted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Capacity per person (hours/cycle)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                 {people.map((p) => (
                   <div key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -246,7 +255,7 @@ export default function App() {
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 0, marginBottom: 14, borderBottom: `1px solid ${c.border}` }}>
-            {[{ id: "capacity", label: "Capacity" }, { id: "burndown", label: "Burndown" }].map((tab) => (
+            {[{ id: "capacity", label: "Capacity" }, { id: "burndown", label: "Burndown" }, { id: "velocity", label: "Velocity" }, { id: "estimates", label: "Estimates" }, { id: "board", label: "Board" }].map((tab) => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                 background: "transparent", border: "none",
                 borderBottom: activeTab === tab.id ? `2px solid ${c.accent}` : "2px solid transparent",
@@ -265,7 +274,7 @@ export default function App() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <div style={{ fontSize: 13, color: c.textSecondary, fontWeight: 600 }}>Cycle {activeCycle.number} Burndown</div>
                     <div style={{ display: "flex", gap: 4 }}>
-                      {["points", "issues"].map((m) => (
+                      {["hours", "issues"].map((m) => (
                         <button key={m} onClick={() => setBurndownMode(m)} style={{
                           background: burndownMode === m ? c.accentBg : "transparent",
                           border: `1px solid ${burndownMode === m ? c.accent : c.border}`,
@@ -276,7 +285,7 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                  <BurndownChart cycle={activeCycle} mode={burndownMode} />
+                  <BurndownChart cycle={activeCycle} mode={burndownMode} issues={issues} />
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5, fontSize: 10, color: c.textMuted }}>Per-person load</div>
                     {people.map((p) => {
@@ -285,9 +294,14 @@ export default function App() {
                       const dp = pI.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
                       return (
                         <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderTop: `1px solid ${c.divider}` }}>
-                          <span style={{ minWidth: 100, color: c.textSecondary, fontSize: 13 }}>{p.split(" ")[0]}</span>
-                          <div style={{ flex: 1 }}><CapacityBar assigned={pts} capacity={capacities[p] || 0} /></div>
-                          <span style={{ fontFamily: MONO, fontSize: 11, color: c.green, minWidth: 50, textAlign: "right" }}>{dp}pt done</span>
+                          {avatars[p] ? (
+                            <img src={avatars[p]} alt={p} style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0 }} />
+                          ) : (
+                            <span style={{ width: 20, flexShrink: 0 }} />
+                          )}
+                          <span style={{ minWidth: 80, color: c.textSecondary, fontSize: 13 }}>{p.split(" ")[0]}</span>
+                          <div style={{ flex: 1 }}><CapacityBar assigned={pts} capacity={capacities[p] || 0} done={dp} /></div>
+                          <span style={{ fontFamily: MONO, fontSize: 11, color: c.green, minWidth: 50, textAlign: "right" }}>{dp}h done</span>
                         </div>
                       );
                     })}
@@ -295,6 +309,41 @@ export default function App() {
                 </>
               ) : <div style={{ textAlign: "center", padding: 40, color: c.textMuted, fontSize: 13 }}>No cycle available.</div>}
             </div>
+          )}
+
+          {/* Velocity tab */}
+          {activeTab === "velocity" && (
+            <div>
+              {activeCycle ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, color: c.textSecondary, fontWeight: 600 }}>Cycle {activeCycle.number} Velocity</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {["hours", "issues"].map((m) => (
+                        <button key={m} onClick={() => setBurndownMode(m)} style={{
+                          background: burndownMode === m ? c.accentBg : "transparent",
+                          border: `1px solid ${burndownMode === m ? c.accent : c.border}`,
+                          borderRadius: 4, padding: "3px 8px", fontSize: 10,
+                          color: burndownMode === m ? c.accent : c.textMuted,
+                          cursor: "pointer", fontFamily: MONO, textTransform: "capitalize",
+                        }}>{m}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <VelocityChart cycle={activeCycle} mode={burndownMode} issues={issues} />
+                </>
+              ) : <div style={{ textAlign: "center", padding: 40, color: c.textMuted, fontSize: 13 }}>No cycle available.</div>}
+            </div>
+          )}
+
+          {/* Estimates tab */}
+          {activeTab === "estimates" && (
+            <EstimatesView issues={issues} cycle={activeCycle} avatars={avatars} />
+          )}
+
+          {/* Board tab */}
+          {activeTab === "board" && (
+            <KanbanBoard teamId={selectedTeam.id} cycleId={activeCycle?.id} />
           )}
 
           {/* Capacity tab */}
@@ -307,7 +356,7 @@ export default function App() {
                   cursor: "pointer", fontFamily: SANS,
                 }}>{allExpanded ? "Collapse all" : "Expand all"}</button>
               </div>
-              {people.map((p) => <PersonCard key={p} name={p} issues={byPerson[p] || []} capacity={capacities[p] || 0} expanded={allExpanded} />)}
+              {people.map((p) => <PersonCard key={p} name={p} issues={byPerson[p] || []} capacity={capacities[p] || 0} expanded={allExpanded} avatarUrl={avatars[p]} />)}
               {(byPerson["Unassigned"]?.length || 0) > 0 && <PersonCard name="Unassigned" issues={byPerson["Unassigned"]} capacity={0} expanded={allExpanded} />}
               {issues.length === 0 && <div style={{ textAlign: "center", padding: 40, color: c.textMuted, fontSize: 13 }}>No issues found.</div>}
             </div>

@@ -88,13 +88,13 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
         fontWeight: est ? 600 : 400,
         minWidth: 28, textAlign: "right", flexShrink: 0,
       }}>
-        {ghost ? "" : est ? `${est}pt` : "\u2014"}
+        {ghost ? "" : est ? `${est}h` : "\u2014"}
       </span>
     </div>
   );
 }
 
-export default function PersonCard({ name, issues, capacity, expanded: expandedProp }) {
+export default function PersonCard({ name, issues, capacity, expanded: expandedProp, avatarUrl }) {
   const { colors: c } = useTheme();
   const [expanded, setExpanded] = useState(expandedProp ?? true);
   const [expandedParents, setExpandedParents] = useState({});
@@ -133,16 +133,24 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
     }} onClick={() => setExpanded((e) => !e)}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: "50%",
-            background: over ? c.redBg : c.accentBg,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 13, fontWeight: 600,
-            color: over ? c.red : c.accent,
-            fontFamily: "'JetBrains Mono', monospace",
-          }}>
-            {initials(name)}
-          </div>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={name} style={{
+              width: 32, height: 32, borderRadius: "50%",
+              border: over ? `2px solid ${c.red}` : `2px solid ${c.border}`,
+              objectFit: "cover",
+            }} />
+          ) : (
+            <div style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: over ? c.redBg : c.accentBg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 13, fontWeight: 600,
+              color: over ? c.red : c.accent,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {initials(name)}
+            </div>
+          )}
           <div>
             <div style={{ fontWeight: 600, fontSize: 14, color: c.text }}>{name}</div>
             <div style={{ fontSize: 11, color: c.textMuted, fontFamily: "'JetBrains Mono', monospace" }}>
@@ -160,7 +168,7 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
         )}
       </div>
 
-      <CapacityBar assigned={totalEst} capacity={capacity} />
+      <CapacityBar assigned={totalEst} capacity={capacity} done={done.reduce((s, i) => s + (i.estimate || 0), 0)} />
 
       {expanded && (
         <>

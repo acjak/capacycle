@@ -8,24 +8,30 @@ Built for big-screen standups — readable across the room.
 
 ## Features
 
-- **Capacity view** — Per-person breakdown of assigned story points vs capacity, with overload flags
-- **Burndown chart** — Cycle burndown (points or issue count) with ideal line and today marker
+- **Capacity view** — Per-person breakdown of assigned hours vs capacity, with overload flags, profile pictures from Linear, and a capacity bar showing completed vs remaining work
+- **Burndown chart** — Cycle burndown (hours or issue count) with ideal line, today marker, and live data point for the current day
+- **Velocity chart** — Daily bar chart of closed hours/issues with average line. Click a day to see which issues were closed, by whom
+- **Estimates analysis** — Tracks estimate drift over a cycle: original estimate, changes before sprint, before starting work, and after starting work. Sortable by drift, assignee, or ID. Includes actual hours input per issue
+- **Kanban board** — Real-time collaborative board per cycle with drag-and-drop cards, anonymous posting, dot voting, and preset templates (Retrospective, Planning, Custom). All changes sync live across viewers via WebSocket
 - **Availability calendar** — Click-to-toggle grid for marking full/half days off per person per cycle, capacity is computed from actual workdays
-- **Summary strip** — Total issues, assigned points, done points, progress %, team capacity, unestimated count
+- **Summary strip** — Total issues, assigned hours, done hours, progress %, team capacity, unestimated count
 - **Cycle selector** — Switch between cycles, auto-selects the current one
 - **Dark/light theme** — Toggle in the header, persisted in localStorage
-- **Collapsible cards** — Click a person card to expand/collapse their issue list
-- **Issue links** — Issue titles link directly to Linear
+- **Sub-issue support** — Collapsible tree view with ghost parent context for cross-assignee sub-issues
+- **Issue links** — Issue identifiers and titles link directly to Linear
+- **Project/milestone tags** — Colored badges on issues showing project and milestone context
 
 ## Architecture
 
-Single-page app with a thin Express proxy to avoid CORS issues.
+Single-page app with an Express backend that proxies Linear API requests and provides persistence.
 
 ```
-Browser (React SPA)  →  Express proxy (/api/linear)  →  api.linear.app/graphql
+Browser (React SPA)  →  Express server  →  api.linear.app/graphql
+                     ↕                  ↕
+                  Socket.io          SQLite (boards, actual hours)
 ```
 
-No database, no session state. Availability data is stored as JSON files on the server (in `data/`), so all users share the same capacity settings. Theme preference is stored in the browser's localStorage.
+Availability data is stored as JSON files in `data/`. Board data, votes, and actual hours are stored in SQLite (`data/headroom.db`). Theme preference is in the browser's localStorage.
 
 ## Prerequisites
 
@@ -62,7 +68,7 @@ Open http://localhost:3000.
 npm run dev
 ```
 
-This runs the Express server (with `--watch`) and the Vite dev server concurrently. The Vite dev server proxies `/api` requests to the Express server.
+This runs the Express server (with `--watch`) and the Vite dev server concurrently. The Vite dev server proxies `/api` requests and WebSocket connections to the Express server.
 
 ## Docker
 
@@ -88,10 +94,10 @@ The container exposes port 3000.
 
 When a cycle is active, capacity is derived from workdays:
 
-1. The dashboard calculates all weekdays (Mon–Fri) in the cycle date range
-2. You set a **points per day** rate (default: 2)
+1. The dashboard calculates all weekdays (Mon-Fri) in the cycle date range
+2. You set an **hours per day** rate (default: 2)
 3. For each person, toggle days as **available**, **half day**, or **off**
-4. Capacity = `(workdays - full_days_off - half_days × 0.5) × points_per_day`
+4. Capacity = `(workdays - full_days_off - half_days * 0.5) * hours_per_day`
 
 Availability data is stored on the server as JSON files in `data/`, keyed by team and cycle. Any user can update availability and all users see the same data. In Docker, `data/` is mounted as a volume so it persists across container rebuilds.
 
@@ -99,8 +105,8 @@ When no cycle is active (backlog view), capacity falls back to a simple number i
 
 ## Tech Stack
 
-- **Frontend:** React 18, Vite, Recharts
-- **Backend:** Express (GraphQL proxy + availability storage)
+- **Frontend:** React 18, Vite, Recharts, @hello-pangea/dnd, socket.io-client
+- **Backend:** Express, Socket.io, better-sqlite3
 - **Styling:** Inline styles with theme context (no CSS framework)
 
 ## Security Notes
