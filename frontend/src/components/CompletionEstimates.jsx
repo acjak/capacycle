@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { fetchProjects, fetchProjectIssues } from "../api.js";
 import { useTheme } from "../theme.jsx";
 import { formatDate } from "../utils.js";
+import { useUnit } from "../useUnit.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
@@ -63,6 +64,7 @@ function estimateCompletion(remaining, velocity, driftFactor) {
 }
 
 function ProjectRow({ project, milestones, velocity, driftFactor, colors: c }) {
+  const u = useUnit();
   const [expanded, setExpanded] = useState(false);
   const issues = project.issues?.nodes || [];
   const totalPts = issues.reduce((s, i) => s + (i.estimate || 0), 0);
@@ -101,7 +103,7 @@ function ProjectRow({ project, milestones, velocity, driftFactor, colors: c }) {
         <div style={{ fontFamily: MONO, fontSize: 12 }}>
           <span style={{ color: c.green }}>{donePts}</span>
           <span style={{ color: c.textDim }}>/</span>
-          <span style={{ color: c.textSecondary }}>{totalPts}h</span>
+          <span style={{ color: c.textSecondary }}>{totalPts}{u}</span>
         </div>
         <div>
           <div style={{ height: 6, background: c.barTrack, borderRadius: 3, overflow: "hidden" }}>
@@ -115,7 +117,7 @@ function ProjectRow({ project, milestones, velocity, driftFactor, colors: c }) {
         <span style={{
           fontFamily: MONO, fontSize: 11,
           color: remaining === 0 ? c.green : driftFactor > 1.05 ? c.red : c.text,
-        }} title="Adjusted for historical scope drift">
+        }} title="Adjusted for historical scope change">
           {remaining === 0 ? "Done" : estimate ? formatDate(estimate.driftedDate.toISOString()) : "—"}
         </span>
       </div>
@@ -148,7 +150,7 @@ function ProjectRow({ project, milestones, velocity, driftFactor, colors: c }) {
             <div style={{ fontFamily: MONO, fontSize: 11 }}>
               <span style={{ color: c.green }}>{msDonePts}</span>
               <span style={{ color: c.textDim }}>/</span>
-              <span>{msTotalPts}h</span>
+              <span>{msTotalPts}{u}</span>
             </div>
             <div>
               <div style={{ height: 4, background: c.barTrack, borderRadius: 2, overflow: "hidden" }}>
@@ -178,7 +180,7 @@ export default function CompletionEstimates({ teamId, cycles }) {
   const velocity = computeVelocity(cycles);
   const driftFactor = computeScopeDriftFactor(cycles);
 
-  const fetchProjects = useCallback(async () => {
+  const loadProjects = useCallback(async () => {
     if (!teamId) return;
     setLoading(true);
     try {
@@ -210,8 +212,8 @@ export default function CompletionEstimates({ teamId, cycles }) {
   }, [teamId]);
 
   useEffect(() => {
-    if (!loaded) fetchProjects();
-  }, [fetchProjects, loaded]);
+    if (!loaded) loadProjects();
+  }, [loadProjects, loaded]);
 
   if (loading) {
     return <div style={{ textAlign: "center", padding: 20, color: c.textMuted, fontSize: 13 }}>Loading projects...</div>;
@@ -234,12 +236,12 @@ export default function CompletionEstimates({ teamId, cycles }) {
             Based on team velocity of <span style={{ fontFamily: MONO, color: c.accent }}>{velocity.toFixed(1)}h/week</span>
             {driftFactor > 1.01 && (
               <span>
-                {" "}&middot; drift factor <span style={{ fontFamily: MONO, color: c.red }}>{driftFactor.toFixed(2)}x</span>
+                {" "}&middot; scope change factor <span style={{ fontFamily: MONO, color: c.red }}>{driftFactor.toFixed(2)}x</span>
               </span>
             )}
           </div>
         </div>
-        <button onClick={fetchProjects} style={{
+        <button onClick={loadProjects} style={{
           background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
           padding: "4px 10px", fontSize: 11, color: c.textSecondary,
           cursor: "pointer", fontFamily: SANS,
@@ -258,7 +260,7 @@ export default function CompletionEstimates({ teamId, cycles }) {
           <span />
           <span>Done</span>
           <span>ETA (estimate)</span>
-          <span>ETA (w/ drift)</span>
+          <span>ETA (adjusted)</span>
         </div>
 
         {projects.map((p) => (
@@ -275,7 +277,7 @@ export default function CompletionEstimates({ teamId, cycles }) {
 
       <div style={{ fontSize: 11, color: c.textMuted, marginTop: 8 }}>
         ETA (estimate) = remaining points / velocity.
-        ETA (w/ drift) = adjusted for historical scope growth of {((driftFactor - 1) * 100).toFixed(0)}% per cycle.
+        ETA (adjusted) = accounts for historical scope change of {((driftFactor - 1) * 100).toFixed(0)}% per cycle.
       </div>
     </div>
   );

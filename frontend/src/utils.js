@@ -1,3 +1,5 @@
+import { isDemoMode, getDemoData } from "./api.js";
+
 export function statusIcon(type) {
   return { started: "\u25D0", completed: "\u25CF", canceled: "\u2715", backlog: "\u25CB" }[type] || "\u25D1";
 }
@@ -106,6 +108,7 @@ function enrichOne(i) {
     projectId: i.project?.id || null,
     milestoneName: i.projectMilestone?.name || null,
     milestoneId: i.projectMilestone?.id || null,
+    labels: (i.labels?.nodes || []).map((l) => ({ id: l.id, name: l.name, color: l.color })),
     completedAt: i.completedAt || null,
     parentId: i.parent?.id || null,
     children: [],
@@ -191,6 +194,8 @@ export function getWorkdays(startsAt, endsAt) {
 }
 
 export async function loadAvailability(teamId, cycleId) {
+  // Demo mode — return mock availability without network call
+  if (isDemoMode()) return getDemoData().availability || { pointsPerDay: 2, people: {} };
   try {
     const res = await fetch(`/api/availability/${teamId}/${cycleId}`);
     if (res.ok) return await res.json();

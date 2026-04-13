@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, ReferenceLine, Line, ComposedChart,
 } from "recharts";
 import { useTheme } from "../theme.jsx";
+import { useUnit } from "../useUnit.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 
@@ -36,6 +37,7 @@ function computeCycleStats(cycle) {
 
 export default function DriftTrends({ cycles, activeCycleId }) {
   const { colors: c } = useTheme();
+  const u = useUnit();
 
   // Only include cycles that have data (completed or in progress)
   const stats = cycles
@@ -59,7 +61,7 @@ export default function DriftTrends({ cycles, activeCycleId }) {
     <div style={{ marginTop: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: c.textSecondary }}>Scope drift by cycle</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: c.textSecondary }}>Scope change by cycle</div>
           <div style={{ fontSize: 11, color: c.textMuted }}>
             How much scope changed during each cycle (initial vs final estimate points)
           </div>
@@ -96,7 +98,7 @@ export default function DriftTrends({ cycles, activeCycleId }) {
               }}
               labelStyle={{ color: c.text, fontWeight: 600 }}
               formatter={(value, name) => {
-                if (name === "scopeDriftPct") return [`${value > 0 ? "+" : ""}${value}%`, "Scope drift"];
+                if (name === "scopeDriftPct") return [`${value > 0 ? "+" : ""}${value}%`, "Scope change"];
                 if (name === "completionPct") return [`${value}%`, "Completed"];
                 return [value, name];
               }}
@@ -124,7 +126,7 @@ export default function DriftTrends({ cycles, activeCycleId }) {
 
         {/* Legend */}
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8, fontSize: 11, color: c.textMuted }}>
-          <span><span style={{ color: c.red }}>&#9632;</span>/<span style={{ color: c.green }}>&#9632;</span> Scope drift %</span>
+          <span><span style={{ color: c.red }}>&#9632;</span>/<span style={{ color: c.green }}>&#9632;</span> Scope change %</span>
           <span><span style={{ color: c.green }}>&#9679;</span> Completion %</span>
         </div>
       </div>
@@ -143,7 +145,7 @@ export default function DriftTrends({ cycles, activeCycleId }) {
           <span>Cycle</span>
           <span>Start pts</span>
           <span>End pts</span>
-          <span>Drift</span>
+          <span>Change</span>
           <span>Done</span>
           <span>Trend</span>
         </div>
@@ -155,8 +157,8 @@ export default function DriftTrends({ cycles, activeCycleId }) {
             alignItems: "center",
           }}>
             <span style={{ color: c.textSecondary }}>{s.label}</span>
-            <span style={{ color: c.textMuted }}>{s.initialScope}h</span>
-            <span style={{ color: c.textSecondary }}>{s.finalScope}h</span>
+            <span style={{ color: c.textMuted }}>{s.initialScope}{u}</span>
+            <span style={{ color: c.textSecondary }}>{s.finalScope}{u}</span>
             <span style={{ color: s.scopeDriftPct > 0 ? c.red : s.scopeDriftPct < 0 ? c.green : c.textMuted }}>
               {s.scopeDriftPct > 0 ? "+" : ""}{s.scopeDriftPct}%
             </span>

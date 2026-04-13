@@ -1,12 +1,33 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import { ThemeProvider } from "./theme.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import BillingGate from "./components/BillingGate.jsx";
+import LegalPage from "./components/LegalPage.jsx";
+import { setDemoMode } from "./api.js";
+import {
+  demoTeams, demoTeamData, demoCycleIssues, demoIssueHistories,
+  demoProjects, demoProjectIssues, demoAvailability,
+} from "./demo-data.js";
 
-function Root() {
+const demoPayload = {
+  teams: demoTeams,
+  teamData: demoTeamData,
+  cycleIssues: demoCycleIssues,
+  issueHistories: demoIssueHistories,
+  projects: demoProjects,
+  projectIssues: demoProjectIssues,
+  availability: demoAvailability,
+};
+
+function DemoApp() {
+  setDemoMode(demoPayload);
+  return <App demo />;
+}
+
+function AuthRoot() {
   const { auth } = useAuth();
 
   // Loading auth state
@@ -29,12 +50,62 @@ function Root() {
   return <App />;
 }
 
+function Root() {
+  const [legalPage, setLegalPage] = useState(null);
+  const [showDemo, setShowDemo] = useState(() => window.location.pathname === "/demo");
+
+  // Handle /privacy and /terms URLs
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === "/privacy") setLegalPage("privacy");
+    else if (path === "/terms") setLegalPage("terms");
+  }, []);
+
+  // Expose navigation for links
+  useEffect(() => {
+    window.__showLegal = (page) => {
+      setLegalPage(page);
+      setShowDemo(false);
+      window.history.pushState({}, "", `/${page}`);
+    };
+    window.__showDemo = () => {
+      setShowDemo(true);
+      setLegalPage(null);
+      window.history.pushState({}, "", "/demo");
+    };
+    const handlePop = () => {
+      const path = window.location.pathname;
+      if (path === "/privacy") { setLegalPage("privacy"); setShowDemo(false); }
+      else if (path === "/terms") { setLegalPage("terms"); setShowDemo(false); }
+      else if (path === "/demo") { setShowDemo(true); setLegalPage(null); }
+      else { setLegalPage(null); setShowDemo(false); }
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+
+  if (legalPage) {
+    return <LegalPage page={legalPage} onBack={() => {
+      setLegalPage(null);
+      window.history.pushState({}, "", "/");
+    }} />;
+  }
+
+  // Demo mode — no auth needed, render directly
+  if (showDemo) return <DemoApp />;
+
+  // Normal mode — auth provider handles login/billing flow
+  return (
+    <AuthProvider>
+      <AuthRoot />
+    </AuthProvider>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ThemeProvider>
-      <AuthProvider>
-        <Root />
-      </AuthProvider>
+      <Root />
     </ThemeProvider>
   </React.StrictMode>
 );

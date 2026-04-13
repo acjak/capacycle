@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useTheme } from "../theme.jsx";
-import { useBoardSocket } from "../socket.js";
+import { useBoardSocket, useDemoBoard } from "../socket.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
@@ -241,9 +241,11 @@ function ColumnHeader({ col, c, onRename, onDelete }) {
   );
 }
 
-export default function KanbanBoard({ teamId, cycleId }) {
+export default function KanbanBoard({ teamId, cycleId, demo = false }) {
   const { colors: c } = useTheme();
-  const { board, connected, emit, voterId } = useBoardSocket(teamId, cycleId);
+  const socketHook = useBoardSocket(demo ? null : teamId, demo ? null : cycleId);
+  const demoHook = useDemoBoard(teamId, cycleId);
+  const { board, connected, emit, voterId } = demo ? demoHook : socketHook;
   const [confirmReset, setConfirmReset] = useState(null);
 
   if (!cycleId) {

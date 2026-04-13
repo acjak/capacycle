@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import CapacityBar from "./CapacityBar.jsx";
 import { statusIcon, statusColor, priorityColor, priorityLabel, initials, totalEstimate, flatIssues } from "../utils.js";
 import { useTheme } from "../theme.jsx";
+import { useUnit } from "../useUnit.js";
 
 function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, childrenExpanded = false, onToggleChildren, ghost = false }) {
+  const u = useUnit();
   const est = ghost ? null : (hasChildren && !childrenExpanded ? totalEstimate(issue) : issue.estimate);
   const showToggle = hasChildren;
 
@@ -94,7 +96,7 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
         fontWeight: est ? 600 : 400,
         minWidth: 28, textAlign: "right", flexShrink: 0,
       }}>
-        {ghost ? "" : est ? `${est}h` : "\u2014"}
+        {ghost ? "" : est ? `${est}${u}` : "\u2014"}
       </span>
     </div>
   );

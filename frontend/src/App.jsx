@@ -18,15 +18,17 @@ import VelocityChart from "./components/VelocityChart.jsx";
 import KanbanBoard from "./components/KanbanBoard.jsx";
 import EstimatesView from "./components/EstimatesView.jsx";
 import Logo from "./components/Logo.jsx";
+import DataFreshness from "./components/DataFreshness.jsx";
 import DriftTrends from "./components/DriftTrends.jsx";
 import CompletionEstimates from "./components/CompletionEstimates.jsx";
+import InsightsView from "./components/InsightsView.jsx";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
 
-export default function App() {
+export default function App({ demo = false }) {
   const { colors, mode, toggle, fontScale, setFontScale, fontSizeLabel, fontScales } = useTheme();
-  const { auth, logout } = useAuth();
+  const { auth, logout, showPlanSelection, updateSettings } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [step, setStep] = useState("Loading...");
@@ -45,6 +47,7 @@ export default function App() {
   const [allExpanded, setAllExpanded] = useState(true);
   const [avatars, setAvatars] = useState({});
   const [showForecasting, setShowForecasting] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Live update listener
@@ -52,6 +55,7 @@ export default function App() {
   const activeCycleRef = useRef(null);
 
   useEffect(() => {
+    if (demo) return; // No live updates in demo mode
     const socket = io({ transports: ["websocket", "polling"] });
     let debounceTimer = null;
 
@@ -66,7 +70,7 @@ export default function App() {
     });
 
     return () => { clearTimeout(debounceTimer); socket.disconnect(); };
-  }, []);
+  }, [demo]);
 
   // Silent reload — no loading spinner, just updates data in background
   const loadTeamSilent = useCallback(async (team) => {
@@ -105,7 +109,12 @@ export default function App() {
       try {
         setStep("Fetching teams...");
         const data = await fetchTeams();
-        const nodes = data.teams.nodes;
+        let nodes = data.teams.nodes;
+        // Filter by accessible teams if subscription limits access
+        const accessible = auth?.billing?.accessibleTeams;
+        if (Array.isArray(accessible)) {
+          nodes = nodes.filter((t) => accessible.includes(t.id));
+        }
         setTeams(nodes);
         const savedId = localStorage.getItem("selectedTeamId");
         const saved = savedId && nodes.find((t) => t.id === savedId);
@@ -217,6 +226,10 @@ export default function App() {
     loadCycleIssues(c);
   };
 
+  // Unit setting: "points" or "hours" (default "hours")
+  const unit = (auth && typeof auth === "object" && auth.settings?.unit) || "hours";
+  const u = unit === "points" ? "p" : "h";
+
   const byPerson = groupByAssignee(issues, people);
   const allFlat = flatIssues(issues);
   const totalPts = allFlat.reduce((s, i) => s + (i.estimate || 0), 0);
@@ -229,6 +242,26 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: SANS, background: c.bg, color: c.text, minHeight: "100vh", padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
+
+      {/* Demo banner */}
+      {demo && (
+        <div style={{
+          background: c.accentBg, border: `1px solid ${c.accent}`, borderRadius: 8,
+          padding: "10px 16px", marginBottom: 14, display: "flex",
+          justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 13, color: c.text }}>
+            You're viewing a demo with sample data.
+          </span>
+          <a href="/" onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", "/"); window.location.reload(); }} style={{
+            background: c.accent, color: "#fff", border: "none", borderRadius: 6,
+            padding: "5px 14px", fontSize: 12, fontWeight: 600,
+            cursor: "pointer", fontFamily: SANS, textDecoration: "none",
+          }}>
+            Get started
+          </a>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
@@ -249,78 +282,116 @@ export default function App() {
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
-          <button onClick={toggle} style={{
-            background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
-            padding: "5px 10px", fontSize: 11, color: c.textSecondary,
-            cursor: "pointer", fontFamily: SANS,
-          }}>{mode === "dark" ? "\u2600" : "\u263E"}</button>
-          <div style={{ position: "relative" }}
-            onMouseEnter={(e) => e.currentTarget.querySelector("[data-dropdown]").style.display = "block"}
-            onMouseLeave={(e) => e.currentTarget.querySelector("[data-dropdown]").style.display = "none"}
-          >
-            <button style={{
+          <DataFreshness onRefresh={handleRefresh} />
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setShowUserMenu((m) => !m)} style={{
+              display: "flex", alignItems: "center", gap: 6,
               background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
-              padding: "5px 10px", fontSize: 11, color: c.textSecondary,
-              cursor: "pointer", fontFamily: MONO, minWidth: 32,
-            }}>{fontSizeLabel}</button>
-            <div data-dropdown="" style={{
-              display: "none", position: "absolute", right: 0, top: "100%", paddingTop: 2, zIndex: 100,
+              padding: "4px 10px 4px 4px", fontSize: 11, color: c.textSecondary,
+              cursor: "pointer", fontFamily: SANS,
             }}>
-              <div style={{
-                background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
-                padding: 4, boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-              }}>
-                {fontScales.map((s) => (
-                  <button key={s.label} onClick={() => setFontScale(s.value)} style={{
-                    display: "block", width: "100%", textAlign: "left",
-                    background: fontScale === s.value ? c.accentBg : "transparent",
-                    border: "none", borderRadius: 4,
-                    padding: "6px 16px", fontSize: 12, fontFamily: MONO,
-                    color: fontScale === s.value ? c.accent : c.text,
-                    cursor: "pointer", whiteSpace: "nowrap",
-                  }}
-                    onMouseEnter={(e) => { if (fontScale !== s.value) e.currentTarget.style.background = c.accentBg; }}
-                    onMouseLeave={(e) => { if (fontScale !== s.value) e.currentTarget.style.background = "transparent"; }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <button onClick={handleRefresh} disabled={loading} style={{
-            background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
-            padding: "5px 10px", fontSize: 11, color: c.textSecondary,
-            cursor: loading ? "wait" : "pointer", fontFamily: SANS,
-          }}>{"\u21BB"} Refresh</button>
-          {auth && auth !== "standalone" && auth.user && (
-            <div style={{ position: "relative" }}>
-              <button onClick={() => setShowUserMenu((m) => !m)} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
-                padding: "4px 10px 4px 4px", fontSize: 11, color: c.textSecondary,
-                cursor: "pointer", fontFamily: SANS,
-              }}>
-                {auth.user.avatarUrl ? (
-                  <img src={auth.user.avatarUrl} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
-                ) : (
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.accentBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: c.accent }}>
-                    {auth.user.name?.[0] || "?"}
-                  </div>
-                )}
-                {auth.user.name?.split(" ")[0] || "User"}
-              </button>
-              {showUserMenu && (
+              {auth && auth !== "standalone" && auth.user ? (
                 <>
-                  <div onClick={() => setShowUserMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
-                  <div style={{
-                    position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 100,
-                    background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
-                    padding: 4, minWidth: 140, boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-                  }}>
+                  {auth.user.avatarUrl ? (
+                    <img src={auth.user.avatarUrl} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
+                  ) : (
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.accentBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: c.accent }}>
+                      {auth.user.name?.[0] || "?"}
+                    </div>
+                  )}
+                  {auth.user.name?.split(" ")[0] || "User"}
+                </>
+              ) : (
+                <span style={{ fontSize: 14, lineHeight: "22px" }}>{"\u2699"}</span>
+              )}
+              <span style={{ fontSize: 8, color: c.textDim, marginLeft: 2 }}>{"\u25BC"}</span>
+            </button>
+            {showUserMenu && (
+              <>
+                <div onClick={() => setShowUserMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
+                <div style={{
+                  position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 100,
+                  background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
+                  padding: 4, minWidth: 180, boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+                }}>
+                  {auth && auth !== "standalone" && auth.user && (
                     <div style={{ padding: "8px 12px", fontSize: 11, color: c.textMuted, borderBottom: `1px solid ${c.divider}` }}>
                       {auth.user.email || auth.user.name}
                     </div>
+                  )}
+
+                  {/* Theme toggle */}
+                  <button onClick={() => { toggle(); }} style={{
+                    display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center",
+                    background: "transparent", border: "none", borderRadius: 4,
+                    padding: "8px 12px", fontSize: 12, color: c.text,
+                    cursor: "pointer", fontFamily: SANS,
+                  }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = c.accentBg}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
+                    <span>Theme</span>
+                    <span style={{ fontSize: 11, color: c.textMuted, fontFamily: MONO }}>{mode === "dark" ? "\u263E dark" : "\u2600 light"}</span>
+                  </button>
+
+                  {/* Font size */}
+                  <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: c.text }}>Font size</span>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      {fontScales.map((s) => (
+                        <button key={s.label} onClick={() => setFontScale(s.value)} style={{
+                          background: fontScale === s.value ? c.accentBg : "transparent",
+                          border: `1px solid ${fontScale === s.value ? c.accent : "transparent"}`,
+                          borderRadius: 3, padding: "2px 7px", fontSize: 11, fontFamily: MONO,
+                          color: fontScale === s.value ? c.accent : c.textMuted,
+                          cursor: "pointer",
+                        }}>{s.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Unit setting — owner only in cloud mode */}
+                  {auth && auth !== "standalone" && auth.user?.role === "owner" && (
+                    <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: c.text }}>Estimates</span>
+                      <div style={{ display: "flex", gap: 2 }}>
+                        {[{ id: "hours", label: "Hours" }, { id: "points", label: "Points" }].map((opt) => (
+                          <button key={opt.id} onClick={() => updateSettings({ unit: opt.id })} style={{
+                            background: unit === opt.id ? c.accentBg : "transparent",
+                            border: `1px solid ${unit === opt.id ? c.accent : "transparent"}`,
+                            borderRadius: 3, padding: "2px 7px", fontSize: 11, fontFamily: MONO,
+                            color: unit === opt.id ? c.accent : c.textMuted,
+                            cursor: "pointer",
+                          }}>{opt.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ borderTop: `1px solid ${c.divider}`, margin: "2px 0" }} />
+
+                  {/* Manage billing — owner only */}
+                  {auth && auth !== "standalone" && auth.user?.role === "owner" && (
+                    <button onClick={async () => {
+                      setShowUserMenu(false);
+                      const res = await fetch("/api/billing/portal", { method: "POST" });
+                      const data = await res.json();
+                      if (data.url) window.location.href = data.url;
+                    }} style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      background: "transparent", border: "none", borderRadius: 4,
+                      padding: "8px 12px", fontSize: 12, color: c.text,
+                      cursor: "pointer", fontFamily: SANS,
+                    }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = c.accentBg}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                    >
+                      Manage billing
+                    </button>
+                  )}
+
+                  {/* Sign out — cloud mode only */}
+                  {auth && auth !== "standalone" && auth.user && (
                     <button onClick={() => { setShowUserMenu(false); logout(); }} style={{
                       display: "block", width: "100%", textAlign: "left",
                       background: "transparent", border: "none", borderRadius: 4,
@@ -332,28 +403,66 @@ export default function App() {
                     >
                       Sign out
                     </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Trial banner */}
+      {auth && auth !== "standalone" && auth.billing?.status === "trialing" && auth.billing?.trialEndsAt && (() => {
+        const daysLeft = Math.max(0, Math.ceil((new Date(auth.billing.trialEndsAt) - new Date()) / 86400000));
+        return (
+          <div style={{
+            background: c.accentBg, border: `1px solid ${c.accent}`, borderRadius: 8,
+            padding: "10px 16px", marginBottom: 14, display: "flex",
+            justifyContent: "space-between", alignItems: "center",
+          }}>
+            <span style={{ fontSize: 13, color: c.text }}>
+              {daysLeft > 0
+                ? `You're on a free trial — ${daysLeft} day${daysLeft === 1 ? "" : "s"} remaining.`
+                : "Your free trial has ended."}
+            </span>
+            {auth.user?.role === "owner" ? (
+              <button onClick={showPlanSelection} style={{
+                background: c.accent, color: "#fff", border: "none", borderRadius: 6,
+                padding: "5px 14px", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: SANS,
+              }}>
+                Choose a plan
+              </button>
+            ) : (
+              <span style={{ fontSize: 12, color: c.textMuted }}>
+                Ask your workspace owner to subscribe.
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Cycle pills + Forecasting toggle */}
       {!loading && selectedTeam && (
         <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           {cycles.length > 1 && cycles.map((cy) => (
-            <button key={cy.id} onClick={() => { switchCycle(cy); setShowForecasting(false); }} style={{
-              background: activeCycle?.id === cy.id && !showForecasting ? c.accentBg : c.card,
-              border: `1px solid ${activeCycle?.id === cy.id && !showForecasting ? c.accent : c.border}`,
+            <button key={cy.id} onClick={() => { switchCycle(cy); setShowForecasting(false); setShowInsights(false); }} style={{
+              background: activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accentBg : c.card,
+              border: `1px solid ${activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accent : c.border}`,
               borderRadius: 5, padding: "4px 10px", fontSize: 11,
-              color: activeCycle?.id === cy.id && !showForecasting ? c.accent : c.textMuted,
+              color: activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accent : c.textMuted,
               cursor: "pointer", fontFamily: MONO,
             }}>Cycle {cy.number}</button>
           ))}
           <div style={{ flex: 1 }} />
-          <button onClick={() => setShowForecasting((f) => !f)} style={{
+          <button onClick={() => { setShowInsights((v) => !v); setShowForecasting(false); }} style={{
+            background: showInsights ? c.accent : c.card,
+            border: `1px solid ${showInsights ? c.accent : c.border}`,
+            borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+            color: showInsights ? "#fff" : c.textSecondary,
+            cursor: "pointer", fontFamily: SANS,
+          }}>Insights</button>
+          <button onClick={() => { setShowForecasting((f) => !f); setShowInsights(false); }} style={{
             background: showForecasting ? c.accent : c.card,
             border: `1px solid ${showForecasting ? c.accent : c.border}`,
             borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
@@ -374,16 +483,20 @@ export default function App() {
         </div>
       )}
 
-      {!loading && selectedTeam && !showForecasting && (
+      {!loading && selectedTeam && showInsights && !showForecasting && (
+        <InsightsView issues={issues} cycle={activeCycle} avatars={avatars} />
+      )}
+
+      {!loading && selectedTeam && !showForecasting && !showInsights && (
         <>
           {/* Summary strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
             {[
               { label: "Issues", value: issues.length, color: c.text },
-              { label: "Assigned", value: `${totalPts}h`, color: c.accent },
-              { label: "Done", value: `${donePts}h`, color: c.green },
+              { label: "Assigned", value: `${totalPts}${u}`, color: c.accent },
+              { label: "Done", value: `${donePts}${u}`, color: c.green },
               { label: "Progress", value: `${pctDone}%`, color: pctDone > 60 ? c.green : c.textSecondary },
-              { label: "Capacity", value: `${totalCap}h`, color: totalPts > totalCap ? c.red : c.textSecondary },
+              { label: "Capacity", value: `${totalCap}${u}`, color: totalPts > totalCap ? c.red : c.textSecondary },
               { label: "Unestimated", value: unestCount, color: unestCount > 0 ? c.yellow : c.textMuted },
             ].map((s) => (
               <div key={s.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
@@ -441,7 +554,7 @@ export default function App() {
                           )}
                           <span style={{ minWidth: 80, color: c.textSecondary, fontSize: 13 }}>{p.split(" ")[0]}</span>
                           <div style={{ flex: 1 }}><CapacityBar assigned={pts} capacity={capacities[p] || 0} done={dp} /></div>
-                          <span style={{ fontFamily: MONO, fontSize: 11, color: c.green, minWidth: 50, textAlign: "right" }}>{dp}h done</span>
+                          <span style={{ fontFamily: MONO, fontSize: 11, color: c.green, minWidth: 50, textAlign: "right" }}>{dp}{u} done</span>
                         </div>
                       );
                     })}
@@ -483,7 +596,7 @@ export default function App() {
 
           {/* Board tab */}
           {activeTab === "board" && (
-            <KanbanBoard teamId={selectedTeam.id} cycleId={activeCycle?.id} />
+            <KanbanBoard teamId={selectedTeam.id} cycleId={activeCycle?.id} demo={demo} />
           )}
 
           {/* Capacity tab */}

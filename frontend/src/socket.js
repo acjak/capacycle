@@ -11,6 +11,96 @@ function getVoterId() {
   return id;
 }
 
+let _demoIdCounter = 1;
+function demoId() { return `demo-${Date.now()}-${_demoIdCounter++}`; }
+
+const PRESET_COLUMNS = {
+  retrospective: [
+    { title: "Went well", color: "#36b87a" },
+    { title: "To improve", color: "#e8a820" },
+    { title: "Action items", color: "#5b7fff" },
+  ],
+  planning: [
+    { title: "To discuss", color: "#e8a820" },
+    { title: "Ready", color: "#36b87a" },
+    { title: "Needs refinement", color: "#ff4d4d" },
+  ],
+  custom: [
+    { title: "Column 1", color: null },
+    { title: "Column 2", color: null },
+    { title: "Column 3", color: null },
+  ],
+};
+
+export function useDemoBoard(teamId, cycleId) {
+  const voterId = useRef(getVoterId()).current;
+  const [board, setBoard] = useState(() => {
+    const cols = PRESET_COLUMNS.retrospective.map((col, i) => ({
+      id: demoId(), title: col.title, color: col.color, position: i, cards: [],
+    }));
+    return { id: demoId(), preset: "retrospective", columns: cols };
+  });
+
+  const emit = useCallback((event, data) => {
+    setBoard((b) => {
+      if (!b) return b;
+      switch (event) {
+        case "add-card": {
+          const card = { id: demoId(), text: data.text, column_id: data.columnId, position: Date.now(), votes: 0, myVote: false };
+          return { ...b, columns: b.columns.map((col) => col.id === data.columnId ? { ...col, cards: [...col.cards, card] } : col) };
+        }
+        case "update-card": {
+          return { ...b, columns: b.columns.map((col) => ({ ...col, cards: col.cards.map((c) => c.id === data.cardId ? { ...c, text: data.text } : c) })) };
+        }
+        case "delete-card": {
+          return { ...b, columns: b.columns.map((col) => ({ ...col, cards: col.cards.filter((c) => c.id !== data.cardId) })) };
+        }
+        case "move-card": {
+          let movedCard = null;
+          const without = b.columns.map((col) => {
+            const found = col.cards.find((c) => c.id === data.cardId);
+            if (found) movedCard = { ...found, column_id: data.newColumnId, position: data.newPosition };
+            return { ...col, cards: col.cards.filter((c) => c.id !== data.cardId) };
+          });
+          if (!movedCard) return b;
+          return { ...b, columns: without.map((col) => col.id === data.newColumnId ? { ...col, cards: [...col.cards, movedCard].sort((a, c) => a.position - c.position) } : col) };
+        }
+        case "toggle-vote": {
+          return {
+            ...b, columns: b.columns.map((col) => ({
+              ...col, cards: col.cards.map((c) => {
+                if (c.id !== data.cardId) return c;
+                const newVote = !c.myVote;
+                return { ...c, myVote: newVote, votes: newVote ? c.votes + 1 : Math.max(0, c.votes - 1) };
+              }),
+            })),
+          };
+        }
+        case "add-column": {
+          const col = { id: demoId(), title: data.title, color: data.color, position: b.columns.length, cards: [] };
+          return { ...b, columns: [...b.columns, col] };
+        }
+        case "update-column": {
+          return { ...b, columns: b.columns.map((c) => c.id === data.columnId ? { ...c, title: data.title, position: data.position, color: data.color } : c).sort((a, c) => a.position - c.position) };
+        }
+        case "delete-column": {
+          return { ...b, columns: b.columns.filter((c) => c.id !== data.columnId) };
+        }
+        case "reset-board": {
+          const cols = (PRESET_COLUMNS[data.preset] || PRESET_COLUMNS.custom).map((col, i) => ({
+            id: demoId(), title: col.title, color: col.color, position: i, cards: [],
+          }));
+          return { ...b, preset: data.preset, columns: cols };
+        }
+        default:
+          return b;
+      }
+    });
+  }, []);
+
+  return { board, connected: true, emit, voterId };
+}
+
 export function useBoardSocket(teamId, cycleId) {
   const [board, setBoard] = useState(null);
   const [connected, setConnected] = useState(false);

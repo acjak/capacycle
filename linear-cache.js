@@ -8,6 +8,7 @@ const ISSUE_FIELDS = `
   state { id name type }
   project { id name slugId }
   projectMilestone { id name }
+  labels { nodes { id name color } }
 `;
 
 const QUERIES = {

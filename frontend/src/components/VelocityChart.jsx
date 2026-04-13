@@ -5,11 +5,13 @@ import {
 } from "recharts";
 import { formatDate, statusIcon, statusColor, priorityColor, priorityLabel, flatIssues } from "../utils.js";
 import { useTheme } from "../theme.jsx";
+import { useUnit } from "../useUnit.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 
 export default function VelocityChart({ cycle, mode = "hours", issues = [] }) {
   const { colors: c } = useTheme();
+  const u = useUnit();
   const [selectedDay, setSelectedDay] = useState(null);
   const completedHist = mode === "hours" ? cycle.completedScopeHistory : cycle.completedIssueCountHistory;
 
@@ -186,7 +188,7 @@ export default function VelocityChart({ cycle, mode = "hours", issues = [] }) {
                     color: issue.estimate ? c.text : c.yellow,
                     minWidth: 28, textAlign: "right", flexShrink: 0,
                   }}>
-                    {issue.estimate ? `${issue.estimate}h` : "\u2014"}
+                    {issue.estimate ? `${issue.estimate}${u}` : "\u2014"}
                   </span>
                 </div>
               ))}

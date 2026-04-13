@@ -1,39 +1,105 @@
+import React, { useState } from "react";
 import { useTheme } from "../theme.jsx";
 import Logo from "./Logo.jsx";
 
 const SANS = "'DM Sans', system-ui, sans-serif";
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 
-function FeatureCard({ icon, title, description, colors: c }) {
+function FeatureSection({ title, description, image, imageAlt, reverse, colors: c }) {
   return (
     <div style={{
-      background: c.card, border: `1px solid ${c.border}`, borderRadius: 10,
-      padding: "24px 20px", textAlign: "left",
+      display: "flex", gap: 40, alignItems: "center",
+      flexDirection: reverse ? "row-reverse" : "row",
+      padding: "48px 0",
     }}>
-      <div style={{ fontSize: 20, marginBottom: 10 }}>{icon}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 13, color: c.textSecondary, lineHeight: 1.5 }}>{description}</div>
+      <div style={{ flex: "0 0 55%", maxWidth: "55%" }}>
+        <div style={{
+          borderRadius: 10, overflow: "hidden",
+          border: `1px solid ${c.border}`,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
+        }}>
+          <img src={image} alt={imageAlt} style={{ width: "100%", display: "block" }} />
+        </div>
+      </div>
+      <div style={{ flex: 1 }}>
+        <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 10px", letterSpacing: -0.3 }}>{title}</h3>
+        <p style={{ fontSize: 15, color: c.textSecondary, lineHeight: 1.65, margin: 0 }}>{description}</p>
+      </div>
     </div>
   );
 }
 
-function PainPoint({ number, pain, solution, colors: c }) {
+function Stat({ value, label, colors: c }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 32, fontWeight: 700, fontFamily: MONO, color: c.accent }}>{value}</div>
+      <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+function PricingCard({ name, description, monthlyPrice, annualPrice, features, highlighted, colors: c }) {
   return (
     <div style={{
-      display: "flex", gap: 16, alignItems: "flex-start",
+      background: c.card, border: `1px solid ${highlighted ? c.accent : c.border}`,
+      borderRadius: 12, padding: "32px 28px", flex: "1 1 0",
+      display: "flex", flexDirection: "column",
+      boxShadow: highlighted ? `0 0 24px ${c.accent}15` : "none",
     }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-        background: c.accentBg, border: `1px solid ${c.accent}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, fontWeight: 700, color: c.accent, fontFamily: MONO,
+      {highlighted && (
+        <div style={{
+          fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1,
+          color: c.accent, marginBottom: 12,
+        }}>Most popular</div>
+      )}
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{name}</div>
+      <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 20 }}>{description}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
+        <span style={{ fontSize: 36, fontWeight: 700, fontFamily: MONO }}>${monthlyPrice}</span>
+        <span style={{ fontSize: 13, color: c.textMuted }}>/month</span>
+      </div>
+      <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 24 }}>
+        ${annualPrice}/month billed annually
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+        {features.map((f, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: c.textSecondary }}>
+            <span style={{ color: c.green, flexShrink: 0 }}>&#10003;</span>
+            <span>{f}</span>
+          </div>
+        ))}
+      </div>
+      <a href="/auth/login" style={{
+        display: "block", textAlign: "center", marginTop: 24,
+        background: highlighted ? c.accent : "transparent",
+        border: `1px solid ${highlighted ? c.accent : c.border}`,
+        borderRadius: 8, padding: "12px 20px", fontSize: 14, fontWeight: 600,
+        color: highlighted ? "#fff" : c.textSecondary,
+        textDecoration: "none", fontFamily: SANS,
+      }}>Start free trial</a>
+    </div>
+  );
+}
+
+function FAQItem({ question, answer, colors: c }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{
+      borderBottom: `1px solid ${c.border}`, padding: "16px 0",
+    }}>
+      <button onClick={() => setOpen((o) => !o)} style={{
+        background: "none", border: "none", cursor: "pointer", width: "100%",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: 0, fontFamily: SANS,
       }}>
-        {number}
-      </div>
-      <div>
-        <div style={{ fontSize: 14, color: c.red, fontWeight: 600, marginBottom: 4 }}>{pain}</div>
-        <div style={{ fontSize: 13, color: c.textSecondary, lineHeight: 1.5 }}>{solution}</div>
-      </div>
+        <span style={{ fontSize: 15, fontWeight: 600, color: c.text, textAlign: "left" }}>{question}</span>
+        <span style={{ fontSize: 18, color: c.textMuted, flexShrink: 0, marginLeft: 16 }}>{open ? "\u2212" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ fontSize: 14, color: c.textSecondary, lineHeight: 1.6, marginTop: 10 }}>
+          {answer}
+        </div>
+      )}
     </div>
   );
 }
@@ -54,6 +120,17 @@ function CTAButton({ children, colors: c }) {
   );
 }
 
+function DemoButton({ colors: c }) {
+  return (
+    <a href="/demo" onClick={(e) => { e.preventDefault(); window.__showDemo?.(); }} style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      background: "transparent", border: `1px solid ${c.border}`, borderRadius: 8,
+      padding: "14px 28px", fontSize: 15, fontWeight: 600,
+      color: c.textSecondary, textDecoration: "none", fontFamily: SANS,
+    }}>Try the demo</a>
+  );
+}
+
 export default function LoginPage() {
   const { colors: c } = useTheme();
 
@@ -65,163 +142,137 @@ export default function LoginPage() {
       {/* Nav */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        padding: "16px 24px", maxWidth: 960, margin: "0 auto",
+        padding: "16px 24px", maxWidth: 1060, margin: "0 auto",
       }}>
         <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 8 }}><Logo size={20} /> Capacycle</div>
-        <a href="/auth/login" style={{
-          background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
-          padding: "6px 14px", fontSize: 12, fontWeight: 500,
-          color: c.textSecondary, textDecoration: "none", fontFamily: SANS,
-        }}>
-          Sign in
-        </a>
+        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <a href="#pricing" style={{ fontSize: 13, color: c.textMuted, textDecoration: "none", fontFamily: SANS }}>Pricing</a>
+          <a href="/demo" onClick={(e) => { e.preventDefault(); window.__showDemo?.(); }} style={{
+            fontSize: 13, color: c.textMuted, textDecoration: "none", fontFamily: SANS,
+          }}>Demo</a>
+          <a href="/auth/login" style={{
+            background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
+            padding: "6px 14px", fontSize: 12, fontWeight: 500,
+            color: c.textSecondary, textDecoration: "none", fontFamily: SANS,
+          }}>Sign in</a>
+        </div>
       </div>
 
       {/* Hero */}
       <div style={{
-        maxWidth: 960, margin: "0 auto", padding: "60px 24px 40px",
+        maxWidth: 1060, margin: "0 auto", padding: "60px 24px 20px",
         textAlign: "center",
       }}>
         <div style={{ marginBottom: 20 }}><Logo size={48} /></div>
         <h1 style={{
-          fontSize: 40, fontWeight: 700, letterSpacing: -1, lineHeight: 1.15,
+          fontSize: 44, fontWeight: 700, letterSpacing: -1.2, lineHeight: 1.12,
           margin: 0,
         }}>
-          Stop guessing if your<br />
-          <span style={{ color: c.accent }}>sprint will actually land</span>
+          Sprint capacity planning<br />
+          <span style={{ color: c.accent }}>that actually works</span>
         </h1>
         <p style={{
-          fontSize: 16, color: c.textSecondary, margin: "16px auto 0",
-          maxWidth: 540, lineHeight: 1.6,
+          fontSize: 17, color: c.textSecondary, margin: "18px auto 0",
+          maxWidth: 560, lineHeight: 1.6,
         }}>
-          Capacycle connects to your Linear workspace and shows you exactly who
-          has capacity, who's overloaded, and whether you'll hit your cycle goals.
+          Capacycle connects to Linear and shows you who has capacity, who's overloaded,
+          and whether your cycle will land. No spreadsheets, no guessing.
         </p>
-        <div style={{ marginTop: 32 }}>
-          <CTAButton colors={c}>Get started with Linear</CTAButton>
-          <div style={{ fontSize: 12, color: c.textMuted, marginTop: 10 }}>
-            14-day free trial. No credit card required.
-          </div>
+        <div style={{ marginTop: 32, display: "flex", gap: 12, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+          <CTAButton colors={c}>Get started</CTAButton>
+          <DemoButton colors={c} />
+        </div>
+        <div style={{ fontSize: 12, color: c.textMuted, marginTop: 10 }}>
+          14-day free trial. No credit card required.
         </div>
       </div>
 
-      {/* Screenshot */}
+      {/* Hero screenshot */}
       <div style={{
-        maxWidth: 800, margin: "20px auto 0", padding: "0 24px",
+        maxWidth: 900, margin: "32px auto 0", padding: "0 24px",
       }}>
         <div style={{
           borderRadius: 12, overflow: "hidden",
           border: `1px solid ${c.border}`,
-          boxShadow: `0 8px 32px rgba(0,0,0,0.3)`,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.35)",
         }}>
           <img
-            src="/screenshot.png"
-            alt="Capacycle dashboard showing per-person capacity, availability calendar, and issue breakdown"
+            src="/screenshots/capacity.png"
+            alt="Capacycle dashboard showing per-person capacity breakdown"
             style={{ width: "100%", display: "block" }}
           />
         </div>
       </div>
 
-      {/* Pain points */}
-      <div style={{
-        maxWidth: 620, margin: "0 auto", padding: "80px 24px 20px",
-      }}>
-        <div style={{
-          textAlign: "center", marginBottom: 40,
-        }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
-            Sound familiar?
-          </h2>
-          <p style={{ fontSize: 14, color: c.textMuted, marginTop: 8 }}>
-            Sprint planning problems that keep coming back.
-          </p>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-          <PainPoint colors={c} number="1"
-            pain="Someone's overloaded and nobody noticed until Wednesday"
-            solution="Capacycle shows per-person capacity bars the moment you open it. Red means overloaded. You see it before standup, not after."
-          />
-          <PainPoint colors={c} number="2"
-            pain="Half the issues don't have estimates, but you planned the sprint anyway"
-            solution="The summary strip counts unestimated issues in yellow. Hard to ignore a big yellow number staring at you during planning."
-          />
-          <PainPoint colors={c} number="3"
-            pain="Estimates quietly changed mid-sprint and the burndown looks wrong"
-            solution="Estimate drift tracking shows you exactly which issues changed, when, and by how much. No more phantom scope creep."
-          />
-          <PainPoint colors={c} number="4"
-            pain="Someone's on vacation but still has 20 points assigned"
-            solution="The availability calendar lets you mark days off per person. Capacity auto-adjusts so you plan against actual working days."
-          />
-          <PainPoint colors={c} number="5"
-            pain="You built a spreadsheet to track capacity, again"
-            solution="Capacycle reads directly from Linear. No exports, no formulas, no copy-paste. Open it and the data is already there."
-          />
-        </div>
-      </div>
+      {/* Feature sections with screenshots */}
+      <div style={{ maxWidth: 1060, margin: "0 auto", padding: "40px 24px 0" }}>
 
-      {/* Features grid */}
-      <div style={{
-        maxWidth: 960, margin: "0 auto", padding: "60px 24px",
-      }}>
-        <div style={{
-          textAlign: "center", marginBottom: 32,
-        }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
-            Everything you need for sprint planning
-          </h2>
-        </div>
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 12,
-        }}>
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.accent }}>&#9632;&#9632;&#9632;</span>}
-            title="Per-person capacity"
-            description="See assigned vs. available hours for every team member. Spot overloads at a glance."
-          />
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.green }}>&#9698;</span>}
-            title="Burndown & velocity"
-            description="Track remaining work against the ideal line. See daily completion velocity with trends."
-          />
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.yellow }}>&#9881;</span>}
-            title="Estimate drift"
-            description="Catch when estimates change mid-cycle. Track actual vs. estimated hours per issue."
-          />
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.accent }}>&#9783;</span>}
-            title="Kanban boards"
-            description="Collaborative boards for retros and planning. Real-time sync with anonymous voting."
-          />
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.green }}>&#128197;</span>}
-            title="Availability calendar"
-            description="Mark days off and half-days. Capacity auto-adjusts so your sprint plan stays realistic."
-          />
-          <FeatureCard colors={c}
-            icon={<span style={{ color: c.yellow }}>&#9889;</span>}
-            title="Live from Linear"
-            description="Reads directly from your workspace. No data entry, no sync, no stale spreadsheets."
-          />
-        </div>
+        <FeatureSection colors={c}
+          title="See who's overloaded before it's too late"
+          description="Per-person capacity bars show assigned vs. available hours at a glance. Issues are grouped by assignee with status, priority, project, and milestone tags. Red means over capacity — you see it during planning, not on Wednesday."
+          image="/screenshots/capacity.png"
+          imageAlt="Per-person capacity view showing workload breakdown"
+          reverse={false}
+        />
+
+        <FeatureSection colors={c}
+          title="Track your burndown in real time"
+          description="Watch remaining work against the ideal line. Toggle between hours and issue count. The per-person load breakdown beneath shows exactly where time is going — and who's already done."
+          image="/screenshots/burndown.png"
+          imageAlt="Burndown chart with ideal line and per-person load"
+          reverse={true}
+        />
+
+        <FeatureSection colors={c}
+          title="Catch estimate drift before it derails the sprint"
+          description="See which issues changed estimates, when, and by how much. The estimate flow column tracks the full history: original, pre-sprint changes, and mid-sprint re-estimates. Sort by drift to find the biggest movers."
+          image="/screenshots/estimates.png"
+          imageAlt="Estimates view showing drift tracking per issue"
+          reverse={false}
+        />
+
+        <FeatureSection colors={c}
+          title="Compare progress across projects and milestones"
+          description="The Insights view breaks down completion by project and milestone within each cycle. See which areas are ahead, which are behind, and where estimate drift is concentrated. Pattern detection reveals what high-drift issues have in common."
+          image="/screenshots/insights.png"
+          imageAlt="Insights view showing progress by project and milestone"
+          reverse={true}
+        />
+
+        <FeatureSection colors={c}
+          title="Forecast when projects will actually ship"
+          description="Velocity-based completion estimates for every project, adjusted for historical scope change. See how much scope grew in past cycles and what that means for your target dates. No more optimistic guesses."
+          image="/screenshots/forecasting.png"
+          imageAlt="Forecasting view with scope change trends and completion estimates"
+          reverse={false}
+        />
+
+        <FeatureSection colors={c}
+          title="Run retros and planning sessions collaboratively"
+          description="Built-in kanban boards with real-time sync and anonymous dot voting. Choose from retrospective, planning, or custom presets. Drag cards between columns, add and rename columns — everything updates live for the whole team."
+          image="/screenshots/board.png"
+          imageAlt="Collaborative kanban board for retros and planning"
+          reverse={true}
+        />
       </div>
 
       {/* How it works */}
       <div style={{
-        maxWidth: 620, margin: "0 auto", padding: "20px 24px 60px",
+        maxWidth: 700, margin: "0 auto", padding: "48px 24px 60px",
       }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
+          <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
             Up and running in 30 seconds
           </h2>
+          <p style={{ fontSize: 14, color: c.textMuted, marginTop: 8 }}>
+            Connect your Linear workspace. Everything else is automatic.
+          </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {[
-            { step: "1", title: "Connect Linear", desc: "Sign in with your Linear account. We only need read access." },
-            { step: "2", title: "Pick your team", desc: "Select the team and cycle. Everything loads instantly from Linear." },
-            { step: "3", title: "See your capacity", desc: "Per-person workload, burndown charts, and estimates. All live." },
+            { step: "1", title: "Connect Linear", desc: "Sign in with your Linear account. Read-only access — we never modify your data." },
+            { step: "2", title: "Pick your team", desc: "Select the team and cycle. Issues, estimates, and assignments load instantly." },
+            { step: "3", title: "See your capacity", desc: "Per-person workload, burndown charts, estimate drift, and project insights. All live." },
           ].map((s) => (
             <div key={s.step} style={{
               display: "flex", gap: 14, alignItems: "flex-start",
@@ -237,26 +288,151 @@ export default function LoginPage() {
                 {s.step}
               </div>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
-                <div style={{ fontSize: 13, color: c.textSecondary }}>{s.desc}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
+                <div style={{ fontSize: 13, color: c.textSecondary, lineHeight: 1.5 }}>{s.desc}</div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Pricing */}
+      <div id="pricing" style={{
+        maxWidth: 760, margin: "0 auto", padding: "60px 24px",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
+            Simple pricing
+          </h2>
+          <p style={{ fontSize: 14, color: c.textMuted, marginTop: 8 }}>
+            14-day free trial on both plans. No credit card required.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 16 }}>
+          <PricingCard colors={c}
+            name="Team"
+            description="For a single Linear team"
+            monthlyPrice={9}
+            annualPrice={7}
+            highlighted={false}
+            features={[
+              "One Linear team",
+              "All capacity & burndown features",
+              "Estimate drift tracking",
+              "Insights & forecasting",
+              "Collaborative boards",
+              "Availability calendar",
+            ]}
+          />
+          <PricingCard colors={c}
+            name="Organization"
+            description="For your entire Linear workspace"
+            monthlyPrice={29}
+            annualPrice={23}
+            highlighted={true}
+            features={[
+              "All teams in your workspace",
+              "Everything in Team, plus:",
+              "Cross-team capacity view",
+              "Org-wide project forecasting",
+              "Switch between teams instantly",
+              "Priority support",
+            ]}
+          />
+        </div>
+      </div>
+
+      {/* Trust / Security */}
+      <div style={{
+        maxWidth: 760, margin: "0 auto", padding: "20px 24px 60px",
+      }}>
+        <div style={{
+          background: c.card, border: `1px solid ${c.border}`, borderRadius: 12,
+          padding: "32px 36px",
+          display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 32,
+        }}>
+          {[
+            {
+              icon: "\uD83D\uDD12",
+              title: "Read-only access",
+              desc: "Capacycle never creates, modifies, or deletes anything in your Linear workspace.",
+            },
+            {
+              icon: "\u2601\uFE0F",
+              title: "Your data stays in Linear",
+              desc: "We cache data briefly for performance. Nothing is stored permanently outside of Linear.",
+            },
+            {
+              icon: "\uD83D\uDD11",
+              title: "OAuth, not passwords",
+              desc: "Sign in via Linear's OAuth flow. We never see or store your Linear password.",
+            },
+          ].map((t) => (
+            <div key={t.title}>
+              <div style={{ fontSize: 24, marginBottom: 10 }}>{t.icon}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>{t.title}</div>
+              <div style={{ fontSize: 13, color: c.textSecondary, lineHeight: 1.5 }}>{t.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div style={{
+        maxWidth: 660, margin: "0 auto", padding: "20px 24px 60px",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
+            Frequently asked questions
+          </h2>
+        </div>
+        <div style={{ borderTop: `1px solid ${c.border}` }}>
+          <FAQItem colors={c}
+            question="How does Capacycle connect to Linear?"
+            answer="You sign in with your Linear account via OAuth. Capacycle gets read-only access to your teams, cycles, issues, and estimates. We never modify anything in your workspace."
+          />
+          <FAQItem colors={c}
+            question="Does it work with any Linear workspace?"
+            answer="Yes. Capacycle works with any Linear workspace regardless of plan. It reads your existing teams, cycles, and issues — no setup or configuration in Linear needed."
+          />
+          <FAQItem colors={c}
+            question="What's the difference between the Team and Organization plans?"
+            answer="The Team plan covers one Linear team. The Organization plan covers every team in your workspace, so you can switch between them without separate subscriptions."
+          />
+          <FAQItem colors={c}
+            question="Can multiple people on my team use it?"
+            answer="Yes. Everyone on the team can sign in with their own Linear account. Boards and votes are shared in real time. Billing is per-workspace, not per-seat."
+          />
+          <FAQItem colors={c}
+            question="Does Capacycle store my data?"
+            answer="Capacycle caches your Linear data briefly (minutes) for performance. Issue history is fetched on demand and not stored. Board cards and availability settings are stored in our database. We never store issue content long-term."
+          />
+          <FAQItem colors={c}
+            question="What happens when my trial ends?"
+            answer="After 14 days, you'll be asked to pick a plan. No credit card is required to start the trial. If you don't subscribe, you simply lose access — nothing is deleted."
+          />
+          <FAQItem colors={c}
+            question="Can I cancel anytime?"
+            answer="Yes. You can cancel from the billing portal at any time. Your subscription stays active until the end of the billing period."
+          />
+        </div>
+      </div>
+
       {/* Bottom CTA */}
       <div style={{
-        textAlign: "center", padding: "40px 24px 60px",
+        textAlign: "center", padding: "48px 24px 60px",
         background: c.card, borderTop: `1px solid ${c.border}`,
       }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3 }}>
+        <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3 }}>
           Stop flying blind on sprint capacity
         </h2>
-        <p style={{ fontSize: 14, color: c.textSecondary, margin: "0 0 24px" }}>
+        <p style={{ fontSize: 15, color: c.textSecondary, margin: "0 0 28px", maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
           Your team's Linear data is already there. Capacycle just makes it useful.
         </p>
-        <CTAButton colors={c}>Start your free trial</CTAButton>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+          <CTAButton colors={c}>Start your free trial</CTAButton>
+          <DemoButton colors={c} />
+        </div>
         <div style={{ fontSize: 12, color: c.textMuted, marginTop: 10 }}>
           No credit card required. Works with any Linear workspace.
         </div>
@@ -268,6 +444,12 @@ export default function LoginPage() {
         textAlign: "center", fontSize: 11, color: c.textMuted,
       }}>
         Capacycle &middot; Capacity planning for Linear
+        <div style={{ marginTop: 6 }}>
+          <a href="/privacy" onClick={(e) => { e.preventDefault(); window.__showLegal?.("privacy"); }}
+            style={{ color: c.textMuted, textDecoration: "none", marginRight: 12 }}>Privacy Policy</a>
+          <a href="/terms" onClick={(e) => { e.preventDefault(); window.__showLegal?.("terms"); }}
+            style={{ color: c.textMuted, textDecoration: "none" }}>Terms of Service</a>
+        </div>
       </div>
     </div>
   );

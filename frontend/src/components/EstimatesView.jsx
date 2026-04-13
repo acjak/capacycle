@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { linearQuery, ISSUE_HISTORY_QUERY } from "../api.js";
+import { linearQuery, ISSUE_HISTORY_QUERY, isDemoMode } from "../api.js";
 import { useTheme } from "../theme.jsx";
 import { flatIssues, statusIcon, statusColor } from "../utils.js";
+import { useUnit } from "../useUnit.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
 
-function ActualHoursInput({ issueId, value, c, onChange }) {
+function ActualHoursInput({ issueId, value, c, onChange, u }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value > 0 ? String(value) : "");
   const inputRef = useRef(null);
@@ -28,7 +29,7 @@ function ActualHoursInput({ issueId, value, c, onChange }) {
         }}
         title="Click to set actual hours"
       >
-        {value > 0 ? `${value}h` : "—"}
+        {value > 0 ? `${value}${u}` : "—"}
       </span>
     );
   }
@@ -115,7 +116,7 @@ function analyzeHistory(history, cycleStartsAt) {
   };
 }
 
-function ChangeBadge({ changes, label, color, c }) {
+function ChangeBadge({ changes, label, color, c, u }) {
   if (changes.length === 0) return null;
   const totalDelta = changes.reduce((s, ch) => s + ch.delta, 0);
   const sign = totalDelta > 0 ? "+" : "";
@@ -126,12 +127,12 @@ function ChangeBadge({ changes, label, color, c }) {
         borderRadius: 3, background: `${color}18`, color,
         whiteSpace: "nowrap",
       }}>
-      {label} {sign}{totalDelta}h ({changes.length}×)
+      {label} {sign}{totalDelta}{u} ({changes.length}×)
     </span>
   );
 }
 
-function EstimateTimeline({ analysis, currentEstimate, c }) {
+function EstimateTimeline({ analysis, currentEstimate, c, u }) {
   const { originalEstimate, preSprintChanges, preStartChanges, postStartChanges } = analysis;
 
   if (originalEstimate == null && currentEstimate == null) {
@@ -157,7 +158,7 @@ function EstimateTimeline({ analysis, currentEstimate, c }) {
 
   // No estimate history at all
   if (stages.length <= 1) {
-    return <span style={{ fontSize: 12, fontFamily: MONO, color: c.text }}>{currentEstimate ?? "—"}h</span>;
+    return <span style={{ fontSize: 12, fontFamily: MONO, color: c.text }}>{currentEstimate ?? "—"}{u}</span>;
   }
 
   return (
@@ -173,13 +174,14 @@ function EstimateTimeline({ analysis, currentEstimate, c }) {
           }}>{s.label}</span>
         </React.Fragment>
       ))}
-      <span style={{ color: c.textDim }}>h</span>
+      <span style={{ color: c.textDim }}>{u}</span>
     </div>
   );
 }
 
 export default function EstimatesView({ issues, cycle, avatars = {} }) {
   const { colors: c } = useTheme();
+  const u = useUnit();
   const [historyMap, setHistoryMap] = useState({});
   const [actualHoursMap, setActualHoursMap] = useState({});
   const [loading, setLoading] = useState(false);
@@ -206,22 +208,25 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
       results.forEach((r) => { map[r.id] = r.history; });
     }
     setHistoryMap(map);
-    // Fetch actual hours
-    try {
-      const res = await fetch("/api/actual-hours", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issueIds: ids }),
-      });
-      const hours = await res.json();
-      setActualHoursMap(hours);
-    } catch { /* ignore */ }
+    // Fetch actual hours (skip in demo mode)
+    if (!isDemoMode()) {
+      try {
+        const res = await fetch("/api/actual-hours", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ issueIds: ids }),
+        });
+        const hours = await res.json();
+        setActualHoursMap(hours);
+      } catch { /* ignore */ }
+    }
     setLoading(false);
     setLoaded(true);
   }, [allIssues.map((i) => i.id).join(",")]);
 
   const saveActualHours = useCallback(async (issueId, hours) => {
     setActualHoursMap((prev) => ({ ...prev, [issueId]: hours }));
+    if (isDemoMode()) return; // local-only in demo
     try {
       await fetch(`/api/actual-hours/${issueId}`, {
         method: "PUT",
@@ -274,13 +279,32 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
     (a.analysis.startedAt && a.analysis.originalEstimate != null && a.issue.estimate !== a.analysis.originalEstimate)
   );
   const drifted = withDrift.filter((a) => a.drift !== 0);
-  const totalDriftPct = drifted.reduce((s, a) => s + a.drift, 0);
-  const avgDriftAbsPct = drifted.length > 0
-    ? drifted.reduce((s, a) => s + Math.abs(a.drift), 0) / drifted.length
-    : 0;
   const totalOriginal = withDrift.reduce((s, a) => s + (a.analysis.originalEstimate || 0), 0);
   const totalCurrent = withDrift.reduce((s, a) => s + (a.issue.estimate || 0), 0);
+  const totalChangePct = totalOriginal > 0 ? ((totalCurrent - totalOriginal) / totalOriginal) * 100 : 0;
+  const avgDriftWhenReest = drifted.length > 0
+    ? drifted.reduce((s, a) => s + Math.abs(a.drift), 0) / drifted.length
+    : 0;
   const totalActual = Object.values(actualHoursMap).reduce((s, h) => s + (h || 0), 0);
+
+  // "With actuals" variants — substitute actual hours where entered, keep estimate otherwise
+  const hasAnyActuals = totalActual > 0;
+  const totalWithActuals = withDrift.reduce((s, a) => {
+    const actual = actualHoursMap[a.issue.id];
+    return s + (actual > 0 ? actual : (a.issue.estimate || 0));
+  }, 0);
+  const totalChangeWithActualsPct = totalOriginal > 0 ? ((totalWithActuals - totalOriginal) / totalOriginal) * 100 : 0;
+  const driftedWithActuals = drifted.map((a) => {
+    const actual = actualHoursMap[a.issue.id];
+    const orig = a.analysis.originalEstimate;
+    if (actual > 0 && orig != null && orig > 0) {
+      return Math.abs(((actual - orig) / orig) * 100);
+    }
+    return Math.abs(a.drift);
+  });
+  const avgDriftWithActuals = driftedWithActuals.length > 0
+    ? driftedWithActuals.reduce((s, v) => s + v, 0) / driftedWithActuals.length
+    : 0;
 
   return (
     <div>
@@ -296,18 +320,18 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 16 }}>
             {[
               { label: "Issues", value: allIssues.length, color: c.text },
-              { label: "Original total", value: `${totalOriginal}h`, color: c.textSecondary },
-              { label: "Current total", value: `${totalCurrent}h`, color: totalCurrent > totalOriginal ? c.red : c.green },
-              { label: "Actual total", value: `${totalActual}h`, color: totalActual > totalCurrent ? c.red : totalActual > 0 ? c.green : c.textMuted },
-              { label: "Total drift", value: `${totalDriftPct > 0 ? "+" : ""}${Math.round(totalDriftPct)}%`, color: totalDriftPct > 0 ? c.red : totalDriftPct < 0 ? c.green : c.textMuted, subtitle: totalDriftPct > 0 ? "underestimated" : totalDriftPct < 0 ? "overestimated" : null },
-              { label: "Avg drift", value: `${Math.round(avgDriftAbsPct)}%`, color: avgDriftAbsPct > 20 ? c.red : avgDriftAbsPct > 0 ? c.yellow : c.textMuted },
+              { label: "Original total", value: `${totalOriginal}${u}`, color: c.textSecondary },
+              { label: "Current total", value: `${totalCurrent}${u}`, color: totalCurrent > totalOriginal ? c.red : c.green },
+              { label: "Actual total", value: `${totalActual}${u}`, color: totalActual > totalCurrent ? c.red : totalActual > 0 ? c.green : c.textMuted },
+              { label: "Cycle drift", value: `${totalChangePct > 0 ? "+" : ""}${Math.round(totalChangePct)}%`, color: totalChangePct > 0 ? c.red : totalChangePct < 0 ? c.green : c.textMuted, subtitle: hasAnyActuals ? `${totalChangeWithActualsPct > 0 ? "+" : ""}${Math.round(totalChangeWithActualsPct)}% w/ actuals` : null, subtitleColor: totalChangeWithActualsPct > 0 ? c.red : totalChangeWithActualsPct < 0 ? c.green : c.textMuted },
+              { label: "Avg when re-est.", value: `${Math.round(avgDriftWhenReest)}%`, color: avgDriftWhenReest > 20 ? c.red : avgDriftWhenReest > 0 ? c.yellow : c.textMuted, subtitle: hasAnyActuals ? `${Math.round(avgDriftWithActuals)}% w/ actuals` : null, subtitleColor: avgDriftWithActuals > 20 ? c.red : avgDriftWithActuals > 0 ? c.yellow : c.textMuted },
               { label: "Re-estimated", value: withChanges.length, color: withChanges.length > 0 ? c.yellow : c.textMuted },
               { label: "Changed after start", value: withPostStart.length, color: withPostStart.length > 0 ? c.red : c.textMuted },
             ].map((s) => (
               <div key={s.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
                 <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: MONO }}>{s.value}</div>
                 <div style={{ fontSize: 9, color: c.textMuted, marginTop: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{s.label}</div>
-                {s.subtitle && <div style={{ fontSize: 9, color: s.color, marginTop: 2, opacity: 0.7 }}>{s.subtitle}</div>}
+                {s.subtitle && <div style={{ fontSize: 9, color: s.subtitleColor || s.color, marginTop: 2, opacity: 0.7 }}>{s.subtitle}</div>}
               </div>
             ))}
           </div>
@@ -401,14 +425,14 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
                     {issue.assigneeName === "Unassigned" ? "—" : issue.assigneeName?.split(" ")[0]}
                   </span>
                 </div>
-                <EstimateTimeline analysis={analysis} currentEstimate={issue.estimate} c={c} />
+                <EstimateTimeline analysis={analysis} currentEstimate={issue.estimate} c={c} u={u} />
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  <ChangeBadge changes={analysis.preSprintChanges} label="pre" color={c.yellow} c={c} />
-                  <ChangeBadge changes={analysis.preStartChanges} label="plan" color={c.accent} c={c} />
-                  <ChangeBadge changes={analysis.postStartChanges} label="wip" color={c.red} c={c} />
+                  <ChangeBadge changes={analysis.preSprintChanges} label="pre" color={c.yellow} c={c} u={u} />
+                  <ChangeBadge changes={analysis.preStartChanges} label="plan" color={c.accent} c={c} u={u} />
+                  <ChangeBadge changes={analysis.postStartChanges} label="wip" color={c.red} c={c} u={u} />
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <ActualHoursInput issueId={issue.id} value={actualHoursMap[issue.id] || 0} c={c} onChange={saveActualHours} />
+                  <ActualHoursInput issueId={issue.id} value={actualHoursMap[issue.id] || 0} c={c} onChange={saveActualHours} u={u} />
                 </div>
               </div>
             ))}
