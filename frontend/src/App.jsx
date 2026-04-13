@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { io } from "socket.io-client";
 import {
-  linearQuery, TEAMS_QUERY, TEAM_DATA_QUERY,
-  CYCLE_ISSUES_QUERY, BACKLOG_ISSUES_QUERY,
+  fetchTeams, fetchTeamData, fetchCycleIssues, fetchBacklogIssues,
+  refreshServerCache, linearQuery, ISSUE_HISTORY_QUERY,
 } from "./api.js";
 import {
   pickActiveCycle, groupByAssignee, enrichIssues, flatIssues,
   loadCapacities, saveCapacities, loadAvailability, computeCapacities, formatDate,
 } from "./utils.js";
 import { useTheme } from "./theme.jsx";
+import { useAuth } from "./AuthContext.jsx";
 import BurndownChart from "./components/BurndownChart.jsx";
 import CapacityBar from "./components/CapacityBar.jsx";
 import PersonCard from "./components/PersonCard.jsx";
@@ -15,12 +17,16 @@ import AvailabilityCalendar from "./components/AvailabilityCalendar.jsx";
 import VelocityChart from "./components/VelocityChart.jsx";
 import KanbanBoard from "./components/KanbanBoard.jsx";
 import EstimatesView from "./components/EstimatesView.jsx";
+import Logo from "./components/Logo.jsx";
+import DriftTrends from "./components/DriftTrends.jsx";
+import CompletionEstimates from "./components/CompletionEstimates.jsx";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
 
 export default function App() {
-  const { colors, mode, toggle } = useTheme();
+  const { colors, mode, toggle, fontScale, setFontScale, fontSizeLabel, fontScales } = useTheme();
+  const { auth, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [step, setStep] = useState("Loading...");
@@ -35,19 +41,77 @@ export default function App() {
   const [capacities, setCapacities] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [burndownMode, setBurndownMode] = useState("hours");
-  const [activeTab, setActiveTab] = useState("capacity");
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem("activeTab") || "capacity");
   const [allExpanded, setAllExpanded] = useState(true);
   const [avatars, setAvatars] = useState({});
+  const [showForecasting, setShowForecasting] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Live update listener
+  const selectedTeamRef = useRef(null);
+  const activeCycleRef = useRef(null);
+
+  useEffect(() => {
+    const socket = io({ transports: ["websocket", "polling"] });
+    let debounceTimer = null;
+
+    socket.on("data-updated", () => {
+      // Debounce rapid webhook events
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (selectedTeamRef.current) {
+          loadTeamSilent(selectedTeamRef.current);
+        }
+      }, 1000);
+    });
+
+    return () => { clearTimeout(debounceTimer); socket.disconnect(); };
+  }, []);
+
+  // Silent reload — no loading spinner, just updates data in background
+  const loadTeamSilent = useCallback(async (team) => {
+    try {
+      const data = await fetchTeamData(team.id);
+      const t = data.team;
+      const allCycles = (t.cycles.nodes || []).sort((a, b) => a.number - b.number);
+      setCycles(allCycles);
+
+      const cycle = activeCycleRef.current;
+      let issueNodes = [];
+      if (cycle) {
+        const iData = await fetchCycleIssues(cycle.id);
+        issueNodes = iData.cycle.issues.nodes;
+      } else {
+        const iData = await fetchBacklogIssues(team.id);
+        issueNodes = iData.team.issues.nodes;
+      }
+
+      const enriched = enrichIssues(issueNodes);
+      setIssues(enriched);
+
+      const memberNodes = t.members?.nodes || [];
+      const members = memberNodes.map((m) => m.name || m.displayName);
+      setTeamMembers(members);
+      const allFlat = flatIssues(enriched);
+      const fromIssues = allFlat.map((i) => i.assigneeName).filter((n) => n !== "Unassigned");
+      const uniq = [...new Set([...members, ...fromIssues])];
+      setPeople(uniq);
+    } catch {}
+  }, []);
 
   // Initial load: fetch teams
   useEffect(() => {
     (async () => {
       try {
         setStep("Fetching teams...");
-        const data = await linearQuery(TEAMS_QUERY);
-        setTeams(data.teams.nodes);
-        if (data.teams.nodes.length === 1) setSelectedTeam(data.teams.nodes[0]);
-        if (data.teams.nodes.length === 0) setError("No teams found in Linear workspace");
+        const data = await fetchTeams();
+        const nodes = data.teams.nodes;
+        setTeams(nodes);
+        const savedId = localStorage.getItem("selectedTeamId");
+        const saved = savedId && nodes.find((t) => t.id === savedId);
+        if (saved) setSelectedTeam(saved);
+        else if (nodes.length === 1) setSelectedTeam(nodes[0]);
+        if (nodes.length === 0) setError("No teams found in Linear workspace");
       } catch (e) {
         setError("Failed to connect: " + e.message);
       }
@@ -61,7 +125,7 @@ export default function App() {
     setError(null);
     try {
       setStep("Loading team data...");
-      const data = await linearQuery(TEAM_DATA_QUERY, { teamId: team.id });
+      const data = await fetchTeamData(team.id);
       const t = data.team;
       const allCycles = (t.cycles.nodes || []).sort((a, b) => a.number - b.number);
       setCycles(allCycles);
@@ -78,10 +142,10 @@ export default function App() {
       setStep("Loading issues...");
       let issueNodes = [];
       if (picked) {
-        const iData = await linearQuery(CYCLE_ISSUES_QUERY, { cycleId: picked.id });
+        const iData = await fetchCycleIssues(picked.id);
         issueNodes = iData.cycle.issues.nodes;
       } else {
-        const iData = await linearQuery(BACKLOG_ISSUES_QUERY, { teamId: team.id });
+        const iData = await fetchBacklogIssues(team.id);
         issueNodes = iData.team.issues.nodes;
       }
 
@@ -114,7 +178,7 @@ export default function App() {
     if (!cycle || !selectedTeam) return;
     setLoading(true);
     try {
-      const iData = await linearQuery(CYCLE_ISSUES_QUERY, { cycleId: cycle.id });
+      const iData = await fetchCycleIssues(cycle.id);
       const enriched = enrichIssues(iData.cycle.issues.nodes);
       setIssues(enriched);
       const allFlat = flatIssues(enriched);
@@ -129,7 +193,24 @@ export default function App() {
     setLoading(false);
   }, [selectedTeam, teamMembers]);
 
-  useEffect(() => { if (selectedTeam) loadTeam(selectedTeam); }, [selectedTeam, loadTeam]);
+  useEffect(() => {
+    if (selectedTeam) {
+      selectedTeamRef.current = selectedTeam;
+      localStorage.setItem("selectedTeamId", selectedTeam.id);
+      loadTeam(selectedTeam);
+    }
+  }, [selectedTeam, loadTeam]);
+
+  useEffect(() => {
+    activeCycleRef.current = activeCycle;
+  }, [activeCycle]);
+
+  const handleRefresh = async () => {
+    await refreshServerCache();
+    if (selectedTeam) loadTeam(selectedTeam);
+  };
+
+  const switchTab = (tab) => { setActiveTab(tab); localStorage.setItem("activeTab", tab); };
 
   const switchCycle = (c) => {
     setActiveCycle(c);
@@ -152,7 +233,7 @@ export default function App() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, letterSpacing: -0.3 }}>Headroom</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 8 }}><Logo size={22} /> Capacycle</h1>
           <div style={{ fontSize: 11, color: c.textMuted, marginTop: 2, fontFamily: MONO }}>
             {selectedTeam?.name || "Select team"}
             {activeCycle && ` \u00B7 Cycle ${activeCycle.number}`}
@@ -173,38 +254,127 @@ export default function App() {
             padding: "5px 10px", fontSize: 11, color: c.textSecondary,
             cursor: "pointer", fontFamily: SANS,
           }}>{mode === "dark" ? "\u2600" : "\u263E"}</button>
-          <button onClick={() => setShowSettings((s) => !s)} style={{
-            background: showSettings ? c.accentBg : c.card,
-            border: `1px solid ${c.border}`, borderRadius: 6, padding: "5px 10px", fontSize: 11,
-            color: showSettings ? c.accent : c.textSecondary, cursor: "pointer", fontFamily: SANS,
-          }}>{"\u2699"} Capacity</button>
-          <button onClick={() => selectedTeam && loadTeam(selectedTeam)} disabled={loading} style={{
+          <div style={{ position: "relative" }}
+            onMouseEnter={(e) => e.currentTarget.querySelector("[data-dropdown]").style.display = "block"}
+            onMouseLeave={(e) => e.currentTarget.querySelector("[data-dropdown]").style.display = "none"}
+          >
+            <button style={{
+              background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
+              padding: "5px 10px", fontSize: 11, color: c.textSecondary,
+              cursor: "pointer", fontFamily: MONO, minWidth: 32,
+            }}>{fontSizeLabel}</button>
+            <div data-dropdown="" style={{
+              display: "none", position: "absolute", right: 0, top: "100%", paddingTop: 2, zIndex: 100,
+            }}>
+              <div style={{
+                background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
+                padding: 4, boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+              }}>
+                {fontScales.map((s) => (
+                  <button key={s.label} onClick={() => setFontScale(s.value)} style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    background: fontScale === s.value ? c.accentBg : "transparent",
+                    border: "none", borderRadius: 4,
+                    padding: "6px 16px", fontSize: 12, fontFamily: MONO,
+                    color: fontScale === s.value ? c.accent : c.text,
+                    cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                    onMouseEnter={(e) => { if (fontScale !== s.value) e.currentTarget.style.background = c.accentBg; }}
+                    onMouseLeave={(e) => { if (fontScale !== s.value) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button onClick={handleRefresh} disabled={loading} style={{
             background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
             padding: "5px 10px", fontSize: 11, color: c.textSecondary,
             cursor: loading ? "wait" : "pointer", fontFamily: SANS,
           }}>{"\u21BB"} Refresh</button>
+          {auth && auth !== "standalone" && auth.user && (
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowUserMenu((m) => !m)} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: c.card, border: `1px solid ${c.border}`, borderRadius: 6,
+                padding: "4px 10px 4px 4px", fontSize: 11, color: c.textSecondary,
+                cursor: "pointer", fontFamily: SANS,
+              }}>
+                {auth.user.avatarUrl ? (
+                  <img src={auth.user.avatarUrl} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
+                ) : (
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.accentBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: c.accent }}>
+                    {auth.user.name?.[0] || "?"}
+                  </div>
+                )}
+                {auth.user.name?.split(" ")[0] || "User"}
+              </button>
+              {showUserMenu && (
+                <>
+                  <div onClick={() => setShowUserMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
+                  <div style={{
+                    position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 100,
+                    background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
+                    padding: 4, minWidth: 140, boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+                  }}>
+                    <div style={{ padding: "8px 12px", fontSize: 11, color: c.textMuted, borderBottom: `1px solid ${c.divider}` }}>
+                      {auth.user.email || auth.user.name}
+                    </div>
+                    <button onClick={() => { setShowUserMenu(false); logout(); }} style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      background: "transparent", border: "none", borderRadius: 4,
+                      padding: "8px 12px", fontSize: 12, color: c.text,
+                      cursor: "pointer", fontFamily: SANS,
+                    }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = c.accentBg}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Cycle pills */}
-      {cycles.length > 1 && !loading && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
-          {cycles.map((cy) => (
-            <button key={cy.id} onClick={() => switchCycle(cy)} style={{
-              background: activeCycle?.id === cy.id ? c.accentBg : c.card,
-              border: `1px solid ${activeCycle?.id === cy.id ? c.accent : c.border}`,
+      {/* Cycle pills + Forecasting toggle */}
+      {!loading && selectedTeam && (
+        <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+          {cycles.length > 1 && cycles.map((cy) => (
+            <button key={cy.id} onClick={() => { switchCycle(cy); setShowForecasting(false); }} style={{
+              background: activeCycle?.id === cy.id && !showForecasting ? c.accentBg : c.card,
+              border: `1px solid ${activeCycle?.id === cy.id && !showForecasting ? c.accent : c.border}`,
               borderRadius: 5, padding: "4px 10px", fontSize: 11,
-              color: activeCycle?.id === cy.id ? c.accent : c.textMuted,
+              color: activeCycle?.id === cy.id && !showForecasting ? c.accent : c.textMuted,
               cursor: "pointer", fontFamily: MONO,
             }}>Cycle {cy.number}</button>
           ))}
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setShowForecasting((f) => !f)} style={{
+            background: showForecasting ? c.accent : c.card,
+            border: `1px solid ${showForecasting ? c.accent : c.border}`,
+            borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+            color: showForecasting ? "#fff" : c.textSecondary,
+            cursor: "pointer", fontFamily: SANS,
+          }}>Forecasting</button>
         </div>
       )}
 
       {error && <div style={{ background: c.redBg, border: `1px solid ${c.redBorder}`, borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: c.red }}>{error}</div>}
       {loading && <div style={{ textAlign: "center", padding: 60, color: c.textMuted }}><div style={{ fontSize: 13 }}>{step}</div></div>}
 
-      {!loading && selectedTeam && (
+      {/* Forecasting view (replaces cycle content) */}
+      {!loading && selectedTeam && showForecasting && (
+        <div>
+          <DriftTrends cycles={cycles} activeCycleId={activeCycle?.id} />
+          <CompletionEstimates teamId={selectedTeam.id} cycles={cycles} />
+        </div>
+      )}
+
+      {!loading && selectedTeam && !showForecasting && (
         <>
           {/* Summary strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
@@ -223,40 +393,10 @@ export default function App() {
             ))}
           </div>
 
-          {/* Capacity settings */}
-          {showSettings && activeCycle && (
-            <AvailabilityCalendar
-              people={people}
-              cycle={activeCycle}
-              teamId={selectedTeam.id}
-              onCapacitiesChange={setCapacities}
-            />
-          )}
-          {showSettings && !activeCycle && (
-            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: c.textMuted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Capacity per person (hours/cycle)</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                {people.map((p) => (
-                  <div key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 13, color: c.textSecondary, minWidth: 80 }}>{p.split(" ")[0]}</span>
-                    <input type="number" min={0} value={capacities[p] || 0}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setCapacities((prev) => ({ ...prev, [p]: val }));
-                        if (selectedTeam) saveCapacities(selectedTeam.id, { ...capacities, [p]: val });
-                      }}
-                      style={{ width: 56, padding: "4px 6px", fontSize: 13, fontFamily: MONO, background: c.input, border: `1px solid ${c.border}`, borderRadius: 4, color: c.text, textAlign: "center", outline: "none" }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Tabs */}
           <div style={{ display: "flex", gap: 0, marginBottom: 14, borderBottom: `1px solid ${c.border}` }}>
             {[{ id: "capacity", label: "Capacity" }, { id: "burndown", label: "Burndown" }, { id: "velocity", label: "Velocity" }, { id: "estimates", label: "Estimates" }, { id: "board", label: "Board" }].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+              <button key={tab.id} onClick={() => switchTab(tab.id)} style={{
                 background: "transparent", border: "none",
                 borderBottom: activeTab === tab.id ? `2px solid ${c.accent}` : "2px solid transparent",
                 padding: "8px 16px", fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400,
@@ -349,13 +489,48 @@ export default function App() {
           {/* Capacity tab */}
           {activeTab === "capacity" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                <button onClick={() => setShowSettings((s) => !s)} style={{
+                  background: showSettings ? c.accentBg : c.card,
+                  border: `1px solid ${showSettings ? c.accent : c.border}`, borderRadius: 5,
+                  padding: "4px 10px", fontSize: 11,
+                  color: showSettings ? c.accent : c.text,
+                  cursor: "pointer", fontFamily: SANS,
+                }}>Edit capacity</button>
                 <button onClick={() => setAllExpanded((e) => !e)} style={{
                   background: c.card, border: `1px solid ${c.border}`, borderRadius: 5,
-                  padding: "4px 10px", fontSize: 11, color: c.textMuted,
+                  padding: "4px 10px", fontSize: 11, color: c.textSecondary,
                   cursor: "pointer", fontFamily: SANS,
                 }}>{allExpanded ? "Collapse all" : "Expand all"}</button>
               </div>
+              {showSettings && activeCycle && (
+                <AvailabilityCalendar
+                  people={people}
+                  cycle={activeCycle}
+                  teamId={selectedTeam.id}
+                  onCapacitiesChange={setCapacities}
+                />
+              )}
+              {showSettings && !activeCycle && (
+                <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "16px 20px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.textMuted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Capacity per person (hours/cycle)</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {people.map((p) => (
+                      <div key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, color: c.textSecondary, minWidth: 80 }}>{p.split(" ")[0]}</span>
+                        <input type="number" min={0} value={capacities[p] || 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setCapacities((prev) => ({ ...prev, [p]: val }));
+                            if (selectedTeam) saveCapacities(selectedTeam.id, { ...capacities, [p]: val });
+                          }}
+                          style={{ width: 56, padding: "4px 6px", fontSize: 13, fontFamily: MONO, background: c.input, border: `1px solid ${c.border}`, borderRadius: 4, color: c.text, textAlign: "center", outline: "none" }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {people.map((p) => <PersonCard key={p} name={p} issues={byPerson[p] || []} capacity={capacities[p] || 0} expanded={allExpanded} avatarUrl={avatars[p]} />)}
               {(byPerson["Unassigned"]?.length || 0) > 0 && <PersonCard name="Unassigned" issues={byPerson["Unassigned"]} capacity={0} expanded={allExpanded} />}
               {issues.length === 0 && <div style={{ textAlign: "center", padding: 40, color: c.textMuted, fontSize: 13 }}>No issues found.</div>}

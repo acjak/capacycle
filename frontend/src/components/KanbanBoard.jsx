@@ -40,7 +40,7 @@ function CardItem({ card, index, c, onVote, onDelete, onUpdate }) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{
-            background: snapshot.isDragging ? c.hover : c.bg,
+            background: snapshot.isDragging ? c.accentBg : c.bg,
             border: `1px solid ${c.border}`,
             borderRadius: 6,
             padding: "10px 12px",

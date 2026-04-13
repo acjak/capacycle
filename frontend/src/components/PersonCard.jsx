@@ -63,21 +63,27 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>{issue.title}</a>
       {issue.milestoneName && (
-        <span style={{
-          fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-          background: `${c.accent}18`, color: c.accent, fontWeight: 500,
-          whiteSpace: "nowrap",
-        }}>{issue.milestoneName}</span>
+        <a href={issue.projectSlugId ? `https://linear.app/project/${issue.projectSlugId}` : "#"}
+          target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+          title={`Milestone: ${issue.milestoneName}`}
+          style={{
+            fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+            background: `${c.accent}18`, color: c.accent, fontWeight: 500,
+            whiteSpace: "nowrap", textDecoration: "none",
+        }}>{issue.milestoneName}</a>
       )}
       {issue.projectName && (
-        <span style={{
-          fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-          background: `${c.textMuted}18`, color: c.textMuted, fontWeight: 500,
-          whiteSpace: "nowrap",
-        }}>{issue.projectName}</span>
+        <a href={issue.projectSlugId ? `https://linear.app/project/${issue.projectSlugId}` : "#"}
+          target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+          title={`Project: ${issue.projectName}`}
+          style={{
+            fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+            background: `${c.textMuted}18`, color: c.textMuted, fontWeight: 500,
+            whiteSpace: "nowrap", textDecoration: "none",
+        }}>{issue.projectName}</a>
       )}
       {issue.priority > 0 && (
-        <span style={{
+        <span title={`Priority: ${priorityLabel(issue.priority)}`} style={{
           fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
           color: priorityColor(issue.priority), fontWeight: 600, flexShrink: 0,
         }}>{priorityLabel(issue.priority)}</span>

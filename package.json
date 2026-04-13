@@ -1,7 +1,13 @@
 {
-  "name": "headroom",
+  "name": "cyclec",
   "version": "1.0.0",
   "type": "module",
+  "main": "server.js",
+  "exports": {
+    ".": "./server.js",
+    "./db": "./db.js",
+    "./cache": "./linear-cache.js"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:frontend\"",
     "dev:server": "node --watch server.js",

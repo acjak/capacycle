@@ -3,7 +3,7 @@ export function statusIcon(type) {
 }
 
 export function priorityColor(p) {
-  return { 1: "#ff4d4d", 2: "#ff8c30", 3: "#5f6472", 4: "#3e4350" }[p] || "#2e323c";
+  return { 1: "#ff4d4d", 2: "#ff8c30", 3: "#8b90a0", 4: "#6e7382" }[p] || "#6e7382";
 }
 
 export function priorityLabel(p) {
@@ -14,10 +14,10 @@ export function statusColor(type) {
   return {
     started: "#5b7fff",
     completed: "#36b87a",
-    canceled: "#5f6472",
-    backlog: "#5f6472",
-    unstarted: "#5f6472",
-  }[type] || "#5f6472";
+    canceled: "#7a7f8e",
+    backlog: "#7a7f8e",
+    unstarted: "#7a7f8e",
+  }[type] || "#7a7f8e";
 }
 
 export function initials(name) {
@@ -102,7 +102,10 @@ function enrichOne(i) {
     stateName: i.state?.name || "",
     stateType: i.state?.type || "unstarted",
     projectName: i.project?.name || null,
+    projectSlugId: i.project?.slugId || null,
+    projectId: i.project?.id || null,
     milestoneName: i.projectMilestone?.name || null,
+    milestoneId: i.projectMilestone?.id || null,
     completedAt: i.completedAt || null,
     parentId: i.parent?.id || null,
     children: [],

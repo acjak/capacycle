@@ -274,8 +274,9 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
     (a.analysis.startedAt && a.analysis.originalEstimate != null && a.issue.estimate !== a.analysis.originalEstimate)
   );
   const drifted = withDrift.filter((a) => a.drift !== 0);
-  const avgDrift = drifted.length > 0
-    ? drifted.reduce((s, a) => s + a.drift, 0) / drifted.length
+  const totalDriftPct = drifted.reduce((s, a) => s + a.drift, 0);
+  const avgDriftAbsPct = drifted.length > 0
+    ? drifted.reduce((s, a) => s + Math.abs(a.drift), 0) / drifted.length
     : 0;
   const totalOriginal = withDrift.reduce((s, a) => s + (a.analysis.originalEstimate || 0), 0);
   const totalCurrent = withDrift.reduce((s, a) => s + (a.issue.estimate || 0), 0);
@@ -298,13 +299,15 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
               { label: "Original total", value: `${totalOriginal}h`, color: c.textSecondary },
               { label: "Current total", value: `${totalCurrent}h`, color: totalCurrent > totalOriginal ? c.red : c.green },
               { label: "Actual total", value: `${totalActual}h`, color: totalActual > totalCurrent ? c.red : totalActual > 0 ? c.green : c.textMuted },
-              { label: "Avg drift", value: `${avgDrift > 0 ? "+" : ""}${Math.round(avgDrift)}%`, color: Math.abs(avgDrift) > 20 ? c.red : c.textSecondary },
+              { label: "Total drift", value: `${totalDriftPct > 0 ? "+" : ""}${Math.round(totalDriftPct)}%`, color: totalDriftPct > 0 ? c.red : totalDriftPct < 0 ? c.green : c.textMuted, subtitle: totalDriftPct > 0 ? "underestimated" : totalDriftPct < 0 ? "overestimated" : null },
+              { label: "Avg drift", value: `${Math.round(avgDriftAbsPct)}%`, color: avgDriftAbsPct > 20 ? c.red : avgDriftAbsPct > 0 ? c.yellow : c.textMuted },
               { label: "Re-estimated", value: withChanges.length, color: withChanges.length > 0 ? c.yellow : c.textMuted },
               { label: "Changed after start", value: withPostStart.length, color: withPostStart.length > 0 ? c.red : c.textMuted },
             ].map((s) => (
               <div key={s.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
                 <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: MONO }}>{s.value}</div>
                 <div style={{ fontSize: 9, color: c.textMuted, marginTop: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{s.label}</div>
+                {s.subtitle && <div style={{ fontSize: 9, color: s.color, marginTop: 2, opacity: 0.7 }}>{s.subtitle}</div>}
               </div>
             ))}
           </div>
@@ -353,7 +356,7 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
                 onMouseEnter={(e) => e.currentTarget.style.background = c.accentBg}
                 onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
               >
-                <span style={{ fontSize: 16, color: statusColor(issue.stateType) }}>
+                <span title={`Status: ${issue.stateName || issue.stateType}`} style={{ fontSize: 16, color: statusColor(issue.stateType) }}>
                   {statusIcon(issue.stateType)}
                 </span>
                 <a href={`https://linear.app/issue/${issue.identifier}`} target="_blank" rel="noopener noreferrer"
@@ -372,16 +375,22 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
                     }}
                   >{issue.title}</a>
                   {issue.milestoneName && (
-                    <span style={{
-                      fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-                      background: `${c.accent}18`, color: c.accent, fontWeight: 500, whiteSpace: "nowrap",
-                    }}>{issue.milestoneName}</span>
+                    <a href={issue.projectSlugId ? `https://linear.app/project/${issue.projectSlugId}` : "#"}
+                      target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                      title={`Milestone: ${issue.milestoneName}`}
+                      style={{
+                        fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+                        background: `${c.accent}18`, color: c.accent, fontWeight: 500, whiteSpace: "nowrap", textDecoration: "none",
+                    }}>{issue.milestoneName}</a>
                   )}
                   {issue.projectName && (
-                    <span style={{
-                      fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-                      background: `${c.textMuted}18`, color: c.textMuted, fontWeight: 500, whiteSpace: "nowrap",
-                    }}>{issue.projectName}</span>
+                    <a href={issue.projectSlugId ? `https://linear.app/project/${issue.projectSlugId}` : "#"}
+                      target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                      title={`Project: ${issue.projectName}`}
+                      style={{
+                        fontSize: 9, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+                        background: `${c.textMuted}18`, color: c.textMuted, fontWeight: 500, whiteSpace: "nowrap", textDecoration: "none",
+                    }}>{issue.projectName}</a>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -415,6 +424,7 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
             <span><span style={{ color: c.accent }}>●</span> plan — before work started</span>
             <span><span style={{ color: c.red }}>●</span> wip — after work started</span>
           </div>
+
         </>
       )}
     </div>

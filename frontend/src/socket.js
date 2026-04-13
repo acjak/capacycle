@@ -4,7 +4,8 @@ import { io } from "socket.io-client";
 function getVoterId() {
   let id = localStorage.getItem("boardVoterId");
   if (!id) {
-    id = crypto.randomUUID();
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, "0")).join("");
     localStorage.setItem("boardVoterId", id);
   }
   return id;

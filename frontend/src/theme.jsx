@@ -7,8 +7,8 @@ const dark = {
   divider: "#1a1d24",
   text: "#e4e6eb",
   textSecondary: "#a8acb8",
-  textMuted: "#5f6472",
-  textDim: "#3e4350",
+  textMuted: "#7a7f8e",
+  textDim: "#555b6a",
   input: "#0d0f14",
   accent: "#5b7fff",
   accentBg: "rgba(91,127,255,0.1)",
@@ -44,11 +44,21 @@ const light = {
   gridLine: "#e0e2e6",
 };
 
+const FONT_SCALES = [
+  { label: "S", value: 1.0 },
+  { label: "M", value: 1.15 },
+  { label: "L", value: 1.3 },
+  { label: "XL", value: 1.5 },
+];
+
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
   const [mode, setMode] = useState(() => {
     try { return localStorage.getItem("theme") || "dark"; } catch { return "dark"; }
+  });
+  const [fontScale, setFontScale] = useState(() => {
+    try { return parseFloat(localStorage.getItem("fontScale")) || 1.15; } catch { return 1.15; }
   });
 
   useEffect(() => {
@@ -57,11 +67,22 @@ export function ThemeProvider({ children }) {
     document.body.style.color = mode === "dark" ? dark.text : light.text;
   }, [mode]);
 
+  useEffect(() => {
+    try { localStorage.setItem("fontScale", fontScale); } catch {}
+    document.documentElement.style.zoom = fontScale;
+  }, [fontScale]);
+
   const toggle = () => setMode((m) => m === "dark" ? "light" : "dark");
+  const cycleFontSize = () => {
+    const idx = FONT_SCALES.findIndex((s) => s.value === fontScale);
+    const next = FONT_SCALES[(idx + 1) % FONT_SCALES.length];
+    setFontScale(next.value);
+  };
+  const fontSizeLabel = FONT_SCALES.find((s) => s.value === fontScale)?.label || "M";
   const colors = mode === "dark" ? dark : light;
 
   return (
-    <ThemeContext.Provider value={{ colors, mode, toggle }}>
+    <ThemeContext.Provider value={{ colors, mode, toggle, fontScale, setFontScale, fontSizeLabel, fontScales: FONT_SCALES }}>
       {children}
     </ThemeContext.Provider>
   );
