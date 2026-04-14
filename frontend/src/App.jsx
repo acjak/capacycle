@@ -80,6 +80,14 @@ export default function App({ demo = false }) {
       const allCycles = (t.cycles.nodes || []).sort((a, b) => a.number - b.number);
       setCycles(allCycles);
 
+      // Update activeCycle to the fresh version (with updated scopeHistory etc.)
+      // so the burndown and velocity charts receive new data.
+      const currentActive = activeCycleRef.current;
+      if (currentActive) {
+        const refreshed = allCycles.find((c) => c.id === currentActive.id);
+        if (refreshed) setActiveCycle(refreshed);
+      }
+
       const cycle = activeCycleRef.current;
       let issueNodes = [];
       if (cycle) {
