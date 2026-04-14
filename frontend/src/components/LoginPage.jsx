@@ -216,11 +216,19 @@ export default function LoginPage() {
         />
 
         <FeatureSection colors={c}
+          title="Set capacity in seconds"
+          description="Mark days off and half-days per person on a simple calendar grid. Capacity auto-adjusts based on working days, so your sprint plan always reflects who's actually available — no manual math, no stale spreadsheets."
+          image="/screenshots/availability.png"
+          imageAlt="Availability calendar for setting per-person capacity"
+          reverse={true}
+        />
+
+        <FeatureSection colors={c}
           title="Track your burndown in real time"
           description="Watch remaining work against the ideal line. Toggle between hours and issue count. The per-person load breakdown beneath shows exactly where time is going — and who's already done."
           image="/screenshots/burndown.png"
           imageAlt="Burndown chart with ideal line and per-person load"
-          reverse={true}
+          reverse={false}
         />
 
         <FeatureSection colors={c}
@@ -228,7 +236,7 @@ export default function LoginPage() {
           description="See which issues changed estimates, when, and by how much. The estimate flow column tracks the full history: original, pre-sprint changes, and mid-sprint re-estimates. Sort by drift to find the biggest movers."
           image="/screenshots/estimates.png"
           imageAlt="Estimates view showing drift tracking per issue"
-          reverse={false}
+          reverse={true}
         />
 
         <FeatureSection colors={c}
@@ -236,7 +244,7 @@ export default function LoginPage() {
           description="The Insights view breaks down completion by project and milestone within each cycle. See which areas are ahead, which are behind, and where estimate drift is concentrated. Pattern detection reveals what high-drift issues have in common."
           image="/screenshots/insights.png"
           imageAlt="Insights view showing progress by project and milestone"
-          reverse={true}
+          reverse={false}
         />
 
         <FeatureSection colors={c}
@@ -244,7 +252,7 @@ export default function LoginPage() {
           description="Velocity-based completion estimates for every project, adjusted for historical scope change. See how much scope grew in past cycles and what that means for your target dates. No more optimistic guesses."
           image="/screenshots/forecasting.png"
           imageAlt="Forecasting view with scope change trends and completion estimates"
-          reverse={false}
+          reverse={true}
         />
 
         <FeatureSection colors={c}
@@ -252,7 +260,7 @@ export default function LoginPage() {
           description="Built-in kanban boards with real-time sync and anonymous dot voting. Choose from retrospective, planning, or custom presets. Drag cards between columns, add and rename columns — everything updates live for the whole team."
           image="/screenshots/board.png"
           imageAlt="Collaborative kanban board for retros and planning"
-          reverse={true}
+          reverse={false}
         />
       </div>
 
