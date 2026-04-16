@@ -10,13 +10,14 @@ import ReportView from "./components/ReportView.jsx";
 import { setDemoMode } from "./api.js";
 import {
   demoTeams, demoTeamData, demoCycleIssues, demoIssueHistories,
-  demoProjects, demoProjectIssues, demoAvailability,
+  demoProjects, demoProjectIssues, demoAvailability, demoCycleIssueData,
 } from "./demo-data.js";
 
 const demoPayload = {
   teams: demoTeams,
   teamData: demoTeamData,
   cycleIssues: demoCycleIssues,
+  cycleIssueData: demoCycleIssueData,
   issueHistories: demoIssueHistories,
   projects: demoProjects,
   projectIssues: demoProjectIssues,

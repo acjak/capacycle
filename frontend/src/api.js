@@ -221,7 +221,10 @@ export async function fetchTeamData(teamId) {
 }
 
 export async function fetchCycleIssues(cycleId) {
-  if (_demoData) return _demoData.cycleIssues;
+  if (_demoData) {
+    // Return per-cycle issues if available (for carry-over detection), fall back to current
+    return _demoData.cycleIssueData?.[cycleId] || _demoData.cycleIssues;
+  }
   const cached = await cachedFetch(`/api/data/cycle/${cycleId}/issues`);
   if (cached) return cached;
   return linearQuery(CYCLE_ISSUES_QUERY, { cycleId });
