@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useTheme } from "../theme.jsx";
 import { useBoardSocket, useDemoBoard } from "../socket.js";
 import { useAuth } from "../AuthContext.jsx";
+import { isDemoMode } from "../api.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 const SANS = "'DM Sans', system-ui, sans-serif";
@@ -242,7 +243,84 @@ function ColumnHeader({ col, c, onRename, onDelete }) {
   );
 }
 
-export default function KanbanBoard({ teamId, cycleId, demo = false }) {
+function PreviousActions({ teamId, cycleId, previousCycleId, c }) {
+  const [items, setItems] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!previousCycleId || isDemoMode()) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/board/${teamId}/${cycleId}/previous-actions?previousCycleId=${previousCycleId}`);
+        if (res.ok) setItems(await res.json());
+      } catch {}
+      setLoaded(true);
+    })();
+  }, [teamId, cycleId, previousCycleId]);
+
+  const toggleResolve = useCallback(async (cardId, resolved) => {
+    setItems((prev) => prev.map((i) => i.id === cardId ? { ...i, resolved } : i));
+    try {
+      await fetch(`/api/action-items/${cardId}/resolve`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId, resolved }),
+      });
+    } catch {}
+  }, [cycleId]);
+
+  if (!loaded || items.length === 0) return null;
+
+  const resolved = items.filter((i) => i.resolved).length;
+
+  return (
+    <div style={{
+      background: c.card, border: `1px solid ${c.border}`, borderRadius: 8,
+      padding: "14px 16px", marginBottom: 14,
+    }}>
+      <div
+        onClick={() => setCollapsed((v) => !v)}
+        style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: c.textSecondary }}>
+          Follow-up from previous cycle
+          <span style={{ fontFamily: MONO, fontSize: 11, color: c.textMuted, marginLeft: 8 }}>
+            {resolved}/{items.length} resolved
+          </span>
+        </div>
+        <span style={{ fontSize: 10, color: c.textDim }}>{collapsed ? "\u25B6" : "\u25BC"}</span>
+      </div>
+      {!collapsed && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((item) => (
+            <div key={item.id} style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              padding: "6px 0", borderBottom: `1px solid ${c.divider}`,
+            }}>
+              <input
+                type="checkbox"
+                checked={item.resolved}
+                onChange={(e) => toggleResolve(item.id, e.target.checked)}
+                style={{ marginTop: 2, accentColor: c.accent, cursor: "pointer" }}
+              />
+              <span style={{
+                fontSize: 13, color: item.resolved ? c.textDim : c.text,
+                textDecoration: item.resolved ? "line-through" : "none",
+                lineHeight: 1.4,
+              }}>{item.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function KanbanBoard({ teamId, cycleId, demo = false, previousCycleId = null }) {
   const { colors: c } = useTheme();
   const { auth } = useAuth();
   const userId = auth && typeof auth === "object" ? auth.user?.id : null;
@@ -366,6 +444,11 @@ export default function KanbanBoard({ teamId, cycleId, demo = false }) {
             }}>Cancel</button>
           </div>
         </div>
+      )}
+
+      {/* Previous cycle action items */}
+      {board.preset === "retrospective" && previousCycleId && (
+        <PreviousActions teamId={teamId} cycleId={cycleId} previousCycleId={previousCycleId} c={c} />
       )}
 
       {/* Board */}

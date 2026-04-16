@@ -21,9 +21,11 @@ import Logo from "./components/Logo.jsx";
 import DataFreshness from "./components/DataFreshness.jsx";
 import DriftTrends from "./components/DriftTrends.jsx";
 import CompletionEstimates from "./components/CompletionEstimates.jsx";
+import StandupView from "./components/StandupView.jsx";
 import {
   IconInsights, IconForecast, IconShare, IconCapacity, IconBurndown,
   IconVelocity, IconEstimates, IconBoard, IconEdit, IconCollapse, IconExpand,
+  IconStandup,
 } from "./icons.jsx";
 import InsightsView from "./components/InsightsView.jsx";
 
@@ -52,6 +54,7 @@ export default function App({ demo = false }) {
   const [avatars, setAvatars] = useState({});
   const [showForecasting, setShowForecasting] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [showStandup, setShowStandup] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareNote, setShareNote] = useState("");
@@ -551,23 +554,30 @@ export default function App({ demo = false }) {
       {!loading && selectedTeam && (
         <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           {cycles.length > 1 && cycles.map((cy) => (
-            <button key={cy.id} onClick={() => { switchCycle(cy); setShowForecasting(false); setShowInsights(false); }} style={{
-              background: activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accentBg : c.card,
-              border: `1px solid ${activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accent : c.border}`,
+            <button key={cy.id} onClick={() => { switchCycle(cy); setShowForecasting(false); setShowInsights(false); setShowStandup(false); }} style={{
+              background: activeCycle?.id === cy.id && !showForecasting && !showInsights && !showStandup ? c.accentBg : c.card,
+              border: `1px solid ${activeCycle?.id === cy.id && !showForecasting && !showInsights && !showStandup ? c.accent : c.border}`,
               borderRadius: 5, padding: "4px 10px", fontSize: 11,
-              color: activeCycle?.id === cy.id && !showForecasting && !showInsights ? c.accent : c.textMuted,
+              color: activeCycle?.id === cy.id && !showForecasting && !showInsights && !showStandup ? c.accent : c.textMuted,
               cursor: "pointer", fontFamily: MONO,
             }}>Cycle {cy.number}</button>
           ))}
           <div style={{ flex: 1 }} />
-          <button onClick={() => { setShowInsights((v) => !v); setShowForecasting(false); }} style={{
+          <button onClick={() => { setShowStandup((v) => !v); setShowInsights(false); setShowForecasting(false); }} style={{
+            background: showStandup ? c.accent : c.card,
+            border: `1px solid ${showStandup ? c.accent : c.border}`,
+            borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+            color: showStandup ? "#fff" : c.textSecondary,
+            cursor: "pointer", fontFamily: SANS, display: "inline-flex", alignItems: "center",
+          }}><IconStandup style={{ marginRight: 5 }} />Standup</button>
+          <button onClick={() => { setShowInsights((v) => !v); setShowForecasting(false); setShowStandup(false); }} style={{
             background: showInsights ? c.accent : c.card,
             border: `1px solid ${showInsights ? c.accent : c.border}`,
             borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
             color: showInsights ? "#fff" : c.textSecondary,
             cursor: "pointer", fontFamily: SANS, display: "inline-flex", alignItems: "center",
           }}><IconInsights style={{ marginRight: 5 }} />Insights</button>
-          <button onClick={() => { setShowForecasting((f) => !f); setShowInsights(false); }} style={{
+          <button onClick={() => { setShowForecasting((f) => !f); setShowInsights(false); setShowStandup(false); }} style={{
             background: showForecasting ? c.accent : c.card,
             border: `1px solid ${showForecasting ? c.accent : c.border}`,
             borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600,
@@ -677,11 +687,15 @@ export default function App({ demo = false }) {
         </div>
       )}
 
-      {!loading && selectedTeam && showInsights && !showForecasting && (
+      {!loading && selectedTeam && showStandup && !showInsights && !showForecasting && (
+        <StandupView issues={issues} people={people} avatars={avatars} />
+      )}
+
+      {!loading && selectedTeam && showInsights && !showForecasting && !showStandup && (
         <InsightsView issues={issues} cycle={activeCycle} avatars={avatars} />
       )}
 
-      {!loading && selectedTeam && !showForecasting && !showInsights && (
+      {!loading && selectedTeam && !showForecasting && !showInsights && !showStandup && (
         <>
           {/* Summary strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
@@ -791,7 +805,12 @@ export default function App({ demo = false }) {
 
           {/* Board tab */}
           {activeTab === "board" && (
-            <KanbanBoard teamId={selectedTeam.id} cycleId={activeCycle?.id} demo={demo} />
+            <KanbanBoard teamId={selectedTeam.id} cycleId={activeCycle?.id} demo={demo}
+              previousCycleId={(() => {
+                if (!activeCycle) return null;
+                const idx = cycles.findIndex((cy) => cy.id === activeCycle.id);
+                return idx > 0 ? cycles[idx - 1].id : null;
+              })()} />
           )}
 
           {/* Capacity tab */}
