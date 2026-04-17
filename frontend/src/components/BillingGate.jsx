@@ -106,7 +106,7 @@ export default function BillingGate() {
               {isExpired ? "Your subscription has expired" : "Choose your plan"}
             </p>
             <p style={{ fontSize: 13, color: c.textMuted, margin: "8px 0 20px" }}>
-              14-day free trial included. Cancel anytime.
+              Cancel anytime.
             </p>
 
             {/* Billing cycle toggle */}
@@ -185,7 +185,7 @@ export default function BillingGate() {
                 fontFamily: SANS, width: "100%",
               }}
             >
-              {loading ? "Redirecting to checkout..." : `Start free trial — ${selectedPlan === "team" ? "Team" : "Organization"}`}
+              {loading ? "Redirecting to checkout..." : `Subscribe — ${selectedPlan === "team" ? "Team" : "Organization"}`}
             </button>
           </>
         ) : (

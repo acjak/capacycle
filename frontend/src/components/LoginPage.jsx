@@ -1,11 +1,148 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTheme } from "../theme.jsx";
 import Logo from "./Logo.jsx";
 
 const SANS = "'DM Sans', system-ui, sans-serif";
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
 
-function FeatureSection({ title, description, image, imageAlt, reverse, colors: c }) {
+function Lightbox({ images, index, onClose, onPrev, onNext, colors: c }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") onPrev();
+      else if (e.key === "ArrowRight") onNext();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose, onPrev, onNext]);
+  const img = images[index];
+  const n = images.length;
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.88)", backdropFilter: "blur(4px)",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      padding: "48px 24px", cursor: "zoom-out",
+    }}>
+      <img src={img.src} alt={img.alt} onClick={(e) => e.stopPropagation()} style={{
+        maxWidth: "min(1600px, 96vw)", maxHeight: "calc(100vh - 140px)",
+        width: "auto", height: "auto", objectFit: "contain",
+        borderRadius: 10, boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+        cursor: "default",
+      }} />
+      {img.caption && (
+        <div style={{
+          fontSize: 14, color: "#d8dae0", marginTop: 16, fontFamily: SANS,
+          textAlign: "center", maxWidth: 640,
+        }}>{img.caption}</div>
+      )}
+      <button onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="Close" style={{
+        position: "absolute", top: 16, right: 20,
+        background: "rgba(255,255,255,0.1)", border: `1px solid rgba(255,255,255,0.2)`,
+        color: "#fff", borderRadius: "50%", width: 40, height: 40,
+        cursor: "pointer", fontSize: 20, lineHeight: 1, fontFamily: SANS,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>&times;</button>
+      {n > 1 && (
+        <>
+          <button onClick={(e) => { e.stopPropagation(); onPrev(); }} aria-label="Previous" style={{
+            position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)",
+            background: "rgba(255,255,255,0.1)", border: `1px solid rgba(255,255,255,0.2)`,
+            color: "#fff", borderRadius: "50%", width: 44, height: 44,
+            cursor: "pointer", fontSize: 22, lineHeight: 1, fontFamily: SANS,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>&#8249;</button>
+          <button onClick={(e) => { e.stopPropagation(); onNext(); }} aria-label="Next" style={{
+            position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
+            background: "rgba(255,255,255,0.1)", border: `1px solid rgba(255,255,255,0.2)`,
+            color: "#fff", borderRadius: "50%", width: 44, height: 44,
+            cursor: "pointer", fontSize: 22, lineHeight: 1, fontFamily: SANS,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>&#8250;</button>
+          <div style={{
+            position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
+            fontSize: 12, color: "rgba(255,255,255,0.55)", fontFamily: MONO,
+          }}>{index + 1} / {n}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Carousel({ images, colors: c }) {
+  const [i, setI] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const n = images.length;
+  const go = (next) => setI((prev) => (prev + next + n) % n);
+  return (
+    <div style={{ position: "relative" }}>
+      <div onClick={() => setLightboxOpen(true)} style={{
+        borderRadius: 10, overflow: "hidden",
+        border: `1px solid ${c.border}`,
+        boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
+        background: c.card,
+        cursor: "zoom-in",
+      }}>
+        <img src={images[i].src} alt={images[i].alt} style={{ width: "100%", display: "block" }} />
+      </div>
+      {n > 1 && (
+        <>
+          <button onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="Previous" style={{
+            position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+            background: "rgba(0,0,0,0.55)", border: `1px solid ${c.border}`,
+            color: "#fff", borderRadius: "50%", width: 36, height: 36,
+            cursor: "pointer", fontSize: 16, lineHeight: 1, fontFamily: SANS,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>&#8249;</button>
+          <button onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="Next" style={{
+            position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+            background: "rgba(0,0,0,0.55)", border: `1px solid ${c.border}`,
+            color: "#fff", borderRadius: "50%", width: 36, height: 36,
+            cursor: "pointer", fontSize: 16, lineHeight: 1, fontFamily: SANS,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>&#8250;</button>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
+            display: "flex", gap: 6,
+            background: "rgba(0,0,0,0.4)", borderRadius: 12, padding: "4px 8px",
+          }}>
+            {images.map((_, idx) => (
+              <button key={idx} onClick={(e) => { e.stopPropagation(); setI(idx); }} aria-label={`Image ${idx + 1}`} style={{
+                width: 7, height: 7, borderRadius: "50%",
+                border: "none", padding: 0, cursor: "pointer",
+                background: idx === i ? "#fff" : "rgba(255,255,255,0.4)",
+              }} />
+            ))}
+          </div>
+        </>
+      )}
+      {images[i].caption && (
+        <div style={{
+          fontSize: 12, color: c.textMuted, marginTop: 8, fontFamily: SANS,
+          fontStyle: "italic", textAlign: "center",
+        }}>{images[i].caption}</div>
+      )}
+      {lightboxOpen && (
+        <Lightbox
+          images={images}
+          index={i}
+          onClose={() => setLightboxOpen(false)}
+          onPrev={() => go(-1)}
+          onNext={() => go(1)}
+          colors={c}
+        />
+      )}
+    </div>
+  );
+}
+
+function FeatureSection({ title, description, images, reverse, colors: c }) {
   return (
     <div style={{
       display: "flex", gap: 40, alignItems: "center",
@@ -13,13 +150,7 @@ function FeatureSection({ title, description, image, imageAlt, reverse, colors: 
       padding: "48px 0",
     }}>
       <div style={{ flex: "0 0 55%", maxWidth: "55%" }}>
-        <div style={{
-          borderRadius: 10, overflow: "hidden",
-          border: `1px solid ${c.border}`,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
-        }}>
-          <img src={image} alt={imageAlt} style={{ width: "100%", display: "block" }} />
-        </div>
+        <Carousel images={images} colors={c} />
       </div>
       <div style={{ flex: 1 }}>
         <h3 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 10px", letterSpacing: -0.3 }}>{title}</h3>
@@ -136,7 +267,9 @@ export default function LoginPage() {
 
   return (
     <div style={{
-      fontFamily: SANS, background: c.bg, color: c.text,
+      fontFamily: SANS,
+      background: `radial-gradient(ellipse 900px 600px at 50% -100px, ${c.accent}26, transparent 70%), radial-gradient(ellipse 700px 500px at 100% 600px, ${c.accent}18, transparent 70%), radial-gradient(ellipse 800px 500px at 0% 1800px, ${c.accent}14, transparent 70%), ${c.bg}`,
+      color: c.text,
       minHeight: "100vh", overflowX: "hidden",
     }}>
       {/* Nav */}
@@ -168,15 +301,16 @@ export default function LoginPage() {
           fontSize: 44, fontWeight: 700, letterSpacing: -1.2, lineHeight: 1.12,
           margin: 0,
         }}>
-          Sprint capacity planning<br />
-          <span style={{ color: c.accent }}>that actually works</span>
+          The sprint tools you miss<br />
+          <span style={{ color: c.accent }}>now on top of Linear</span>
         </h1>
         <p style={{
           fontSize: 17, color: c.textSecondary, margin: "18px auto 0",
-          maxWidth: 560, lineHeight: 1.6,
+          maxWidth: 620, lineHeight: 1.6,
         }}>
-          Capacycle connects to Linear and shows you who has capacity, who's overloaded,
-          and whether your cycle will land. No spreadsheets, no guessing.
+          Capacity planning, burndown, velocity, forecasting, retros. For Scrum Masters and
+          Product Owners whose team moved to Linear — but still need the controls they had in
+          Azure DevOps or Jira.
         </p>
         <div style={{ marginTop: 32, display: "flex", gap: 12, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
           <CTAButton colors={c}>Get started</CTAButton>
@@ -194,13 +328,48 @@ export default function LoginPage() {
         <div style={{
           borderRadius: 12, overflow: "hidden",
           border: `1px solid ${c.border}`,
-          boxShadow: "0 8px 40px rgba(0,0,0,0.35)",
+          boxShadow: `0 8px 40px rgba(0,0,0,0.35), 0 0 80px ${c.accent}22`,
         }}>
           <img
-            src="/screenshots/capacity.png"
+            src="/screenshots/capacity_overview.png"
             alt="Capacycle dashboard showing per-person capacity breakdown"
             style={{ width: "100%", display: "block" }}
           />
+        </div>
+      </div>
+
+      {/* Coming from ADO/Jira? */}
+      <div style={{ maxWidth: 900, margin: "56px auto 0", padding: "0 24px" }}>
+        <div style={{
+          background: c.card, border: `1px solid ${c.border}`, borderRadius: 12,
+          padding: "22px 28px",
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2,
+            color: c.accent, marginBottom: 12,
+          }}>Coming from Azure DevOps or Jira?</div>
+          <div style={{ fontSize: 14, color: c.textSecondary, lineHeight: 1.65, marginBottom: 14 }}>
+            Linear is fast and beautiful — but its planning surface is deliberately minimal.
+            Capacycle puts the controls you relied on back in front of you, without leaving Linear.
+          </div>
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px 24px",
+            fontSize: 13, color: c.textSecondary,
+          }}>
+            {[
+              "Per-person capacity & availability",
+              "Sprint burndown with remaining-work line",
+              "Historical velocity per cycle",
+              "Estimate drift, mid-sprint",
+              "Velocity-based project forecasting",
+              "Retrospective & planning boards",
+            ].map((item) => (
+              <div key={item} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <span style={{ color: c.green, flexShrink: 0, marginTop: 1 }}>&#10003;</span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -208,60 +377,139 @@ export default function LoginPage() {
       <div style={{ maxWidth: 1060, margin: "0 auto", padding: "40px 24px 0" }}>
 
         <FeatureSection colors={c}
-          title="See who's overloaded before it's too late"
-          description="Per-person capacity bars show assigned vs. available hours at a glance. Issues are grouped by assignee with status, priority, project, and milestone tags. Red means over capacity — you see it during planning, not on Wednesday."
-          image="/screenshots/capacity.png"
-          imageAlt="Per-person capacity view showing workload breakdown"
+          title="Capacity planning that reflects who's actually available"
+          description="Per-person capacity bars show assigned vs. available hours during planning — not on Wednesday. Red flags overload before it becomes a problem. A simple availability calendar lets you mark days off and half-days; remaining capacity recalculates automatically, so your sprint plan always matches reality."
+          images={[
+            { src: "/screenshots/capacity_overview.png", alt: "Per-person capacity view with assigned vs. available hours", caption: "Every person, one screen." },
+            { src: "/screenshots/capacity_detail_overload.png", alt: "Overloaded team members highlighted in red", caption: "Red bars = over capacity. Catch it during planning." },
+            { src: "/screenshots/capacity_availability.png", alt: "Per-person availability calendar for the cycle", caption: "Days off, half-days, hours per day — capacity updates live." },
+          ]}
           reverse={false}
         />
 
         <FeatureSection colors={c}
-          title="Set capacity in seconds"
-          description="Mark days off and half-days per person on a simple calendar grid. Capacity auto-adjusts based on working days, so your sprint plan always reflects who's actually available — no manual math, no stale spreadsheets."
-          image="/screenshots/availability.png"
-          imageAlt="Availability calendar for setting per-person capacity"
+          title="Burndown with the remaining-work line you expect"
+          description="Watch remaining work against the ideal line, with a today marker and hover tooltips for exact values. Toggle between hours and issue count. Underneath, a per-person load breakdown shows who's on track, who's ahead, and who's headed for a crunch."
+          images={[
+            { src: "/screenshots/burndown_overview.png", alt: "Sprint burndown chart with ideal line", caption: "Remaining work vs. ideal, updated live from Linear." },
+            { src: "/screenshots/burndown_detail.png", alt: "Burndown chart with hover values and per-person load table", caption: "Exact values on hover. Per-person load on the same screen." },
+          ]}
           reverse={true}
         />
 
         <FeatureSection colors={c}
-          title="Track your burndown in real time"
-          description="Watch remaining work against the ideal line. Toggle between hours and issue count. The per-person load breakdown beneath shows exactly where time is going — and who's already done."
-          image="/screenshots/burndown.png"
-          imageAlt="Burndown chart with ideal line and per-person load"
+          title="Historical velocity, so next sprint's ask is grounded"
+          description="A simple bar chart of completed work per cycle, with the running average. Use it in planning when the team pushes back on a stretch commitment — and use it to set expectations with stakeholders. No extension, no configuration; it's calculated from cycle history in Linear."
+          images={[
+            { src: "/screenshots/velocity_overview.png", alt: "Velocity bar chart of completed work per cycle", caption: "Completed work per cycle, with running average." },
+          ]}
           reverse={false}
         />
 
         <FeatureSection colors={c}
           title="Catch estimate drift before it derails the sprint"
-          description="See which issues changed estimates, when, and by how much. The estimate flow column tracks the full history: original, pre-sprint changes, and mid-sprint re-estimates. Sort by drift to find the biggest movers."
-          image="/screenshots/estimates.png"
-          imageAlt="Estimates view showing drift tracking per issue"
+          description="Every issue's estimate flow in one table: original → current, plus every mid-sprint change with a timestamp. Sort by drift to find the biggest movers. Summary stats at the top tell you how much the whole cycle has grown, how many issues were re-estimated, and how many changed after work started."
+          images={[
+            { src: "/screenshots/estimates_overview.png", alt: "Estimates table with cycle drift summary and per-issue drift", caption: "Cycle drift at a glance. Every re-estimate tracked." },
+            { src: "/screenshots/estimates_detail.png", alt: "Estimate changes sorted by drift magnitude", caption: "Sort by drift. Biggest movers float to the top." },
+          ]}
           reverse={true}
         />
 
         <FeatureSection colors={c}
-          title="Compare progress across projects and milestones"
-          description="The Insights view breaks down completion by project and milestone within each cycle. See which areas are ahead, which are behind, and where estimate drift is concentrated. Pattern detection reveals what high-drift issues have in common."
-          image="/screenshots/insights.png"
-          imageAlt="Insights view showing progress by project and milestone"
+          title="Project & milestone insights, not just ticket stats"
+          description="See completion by project and milestone inside each cycle, plus a drift ranking that shows which projects are quietly growing. Pattern detection highlights what your highest-drift issues have in common — so the next sprint doesn't repeat the same surprises."
+          images={[
+            { src: "/screenshots/insights_overview.png", alt: "Progress by project and milestone", caption: "Roll up by project and milestone." },
+            { src: "/screenshots/insights_detail.png", alt: "Drift ranking by project", caption: "Drift ranking: which projects are growing out from under you." },
+          ]}
           reverse={false}
         />
 
         <FeatureSection colors={c}
           title="Forecast when projects will actually ship"
-          description="Velocity-based completion estimates for every project, adjusted for historical scope change. See how much scope grew in past cycles and what that means for your target dates. No more optimistic guesses."
-          image="/screenshots/forecasting.png"
-          imageAlt="Forecasting view with scope change trends and completion estimates"
+          description="Velocity-based completion estimates for every project, with a second column that adjusts for historical scope change. You get two dates: what the numbers say, and what they say once you account for the fact that estimates keep creeping. Stakeholders get a realistic answer — before they ask."
+          images={[
+            { src: "/screenshots/forecasting_overview.png", alt: "Scope change per cycle history chart", caption: "How much scope has moved in each past cycle." },
+            { src: "/screenshots/forecasting_detail.png", alt: "Per-project completion estimates with drift-adjusted ETA", caption: "Two ETAs per project: raw velocity, and adjusted for drift." },
+          ]}
           reverse={true}
         />
 
         <FeatureSection colors={c}
-          title="Run retros and planning sessions collaboratively"
-          description="Built-in kanban boards with real-time sync and anonymous dot voting. Choose from retrospective, planning, or custom presets. Drag cards between columns, add and rename columns — everything updates live for the whole team."
-          image="/screenshots/board.png"
-          imageAlt="Collaborative kanban board for retros and planning"
+          title="An async standup view for distributed teams"
+          description="One screen, one person at a time: what they completed since yesterday, what's in progress, and what's up next. Great for async standups, for product check-ins, and for the PO who just wants to know where everyone is without pinging six people."
+          images={[
+            { src: "/screenshots/standup_overview.png", alt: "Standup view with per-person completed, in-progress, and up next", caption: "Yesterday, today, next — for everyone on the team." },
+          ]}
           reverse={false}
         />
+
+        <FeatureSection colors={c}
+          title="Retros and planning boards, in the same tool"
+          description="Multi-column kanban with real-time sync, drag-and-drop, and anonymous dot voting. Choose the Retrospective preset for Went Well / To Improve / Action Items, Planning for the sprint grid, or build your own columns. Everything updates live for the whole team — no separate Miro board, no separate subscription."
+          images={[
+            { src: "/screenshots/board_overview.png", alt: "Retrospective board with cards in three columns", caption: "Retro preset: Went Well, To Improve, Action Items." },
+            { src: "/screenshots/board_detail.png", alt: "Retro board with votes counted on cards", caption: "Anonymous dot voting — see what the team actually wants to talk about." },
+          ]}
+          reverse={true}
+        />
+      </div>
+
+      {/* Built for daily use */}
+      <div style={{
+        maxWidth: 1060, margin: "0 auto", padding: "48px 24px 0",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: 0 }}>
+            Built for daily use
+          </h2>
+          <p style={{ fontSize: 14, color: c.textMuted, marginTop: 8 }}>
+            Fast enough to pull up mid-standup. Live enough that your team sees the same thing.
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          {[
+            {
+              title: "Quick",
+              desc: "Tabs switch instantly. Changing cycles, toggling burndown modes, or opening the standup view is a single click — no spinners, no waiting for a fetch.",
+              icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+              ),
+            },
+            {
+              title: "Real-time",
+              desc: "Boards and votes sync across every open tab the moment anything changes — perfect for remote retros and planning sessions where half the team is on a call.",
+              icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+                  <polyline points="21 3 21 9 15 9" />
+                </svg>
+              ),
+            },
+            {
+              title: "Light & dark",
+              desc: "Switch themes with a click. Both modes use the same careful typography and color system — pick the one that matches the rest of your screen.",
+              icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                </svg>
+              ),
+            },
+          ].map((item) => (
+            <div key={item.title} style={{
+              background: c.card, border: `1px solid ${c.border}`, borderRadius: 12,
+              padding: "24px 24px 22px",
+            }}>
+              <div style={{ color: c.accent, marginBottom: 12 }}>{item.icon}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{item.title}</div>
+              <div style={{ fontSize: 13, color: c.textSecondary, lineHeight: 1.55 }}>{item.desc}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* How it works */}
@@ -278,9 +526,9 @@ export default function LoginPage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {[
-            { step: "1", title: "Connect Linear", desc: "Sign in with your Linear account. Read-only access — we never modify your data." },
-            { step: "2", title: "Pick your team", desc: "Select the team and cycle. Issues, estimates, and assignments load instantly." },
-            { step: "3", title: "See your capacity", desc: "Per-person workload, burndown charts, estimate drift, and project insights. All live." },
+            { step: "1", title: "Sign in with Linear", desc: "One-click OAuth. Read-only access — Capacycle never modifies your workspace." },
+            { step: "2", title: "Pick a team and a cycle", desc: "Issues, estimates, assignees, projects, and milestones load instantly. Nothing to configure in Linear." },
+            { step: "3", title: "Plan, track, forecast", desc: "Capacity view, burndown, velocity, drift, forecasting, retros — all running on your existing Linear data." },
           ].map((s) => (
             <div key={s.step} style={{
               display: "flex", gap: 14, alignItems: "flex-start",
@@ -432,10 +680,11 @@ export default function LoginPage() {
         background: c.card, borderTop: `1px solid ${c.border}`,
       }}>
         <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3 }}>
-          Stop flying blind on sprint capacity
+          Run the sprint, not the spreadsheet
         </h2>
-        <p style={{ fontSize: 15, color: c.textSecondary, margin: "0 0 28px", maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
-          Your team's Linear data is already there. Capacycle just makes it useful.
+        <p style={{ fontSize: 15, color: c.textSecondary, margin: "0 0 28px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
+          Your team's Linear data is already there. Capacycle turns it into the capacity plan,
+          burndown, and forecast you actually need.
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
           <CTAButton colors={c}>Start your free trial</CTAButton>
@@ -451,7 +700,7 @@ export default function LoginPage() {
         padding: "20px 24px",
         textAlign: "center", fontSize: 11, color: c.textMuted,
       }}>
-        Capacycle &middot; Capacity planning for Linear
+        Capacycle &middot; Sprint planning, forecasting, and retros for Linear
         <div style={{ marginTop: 6 }}>
           <a href="/privacy" onClick={(e) => { e.preventDefault(); window.__showLegal?.("privacy"); }}
             style={{ color: c.textMuted, textDecoration: "none", marginRight: 12 }}>Privacy Policy</a>
