@@ -179,7 +179,7 @@ function EstimateTimeline({ analysis, currentEstimate, c, u }) {
   );
 }
 
-export default function EstimatesView({ issues, cycle, avatars = {} }) {
+export default function EstimatesView({ issues, cycle, avatars = {}, rollupMode = "children", backfillClosed = false }) {
   const { colors: c } = useTheme();
   const u = useUnit();
   const [historyMap, setHistoryMap] = useState({});
@@ -254,7 +254,33 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
     analysis: analyzeHistory(historyMap[issue.id], cycle?.startsAt),
   }));
 
-  // Compute drift: (current - original) / original
+  // Sub-issue rollup drift: for each parent issue, compute the sum of its children's
+  // original vs current estimates. Lets us attribute drift on the parent row to sub-issues
+  // even when the parent's own estimate never changed.
+  const childDriftByParent = {};
+  for (const parent of issues) {
+    const children = parent.children || [];
+    if (children.length === 0) continue;
+    let origSum = 0, currSum = 0, changedCount = 0, anyEstimated = false;
+    for (const ch of children) {
+      if (ch.estimate != null) anyEstimated = true;
+      const chAnalysis = analyzeHistory(historyMap[ch.id], cycle?.startsAt);
+      const chOrig = chAnalysis.originalEstimate != null ? chAnalysis.originalEstimate : (ch.estimate || 0);
+      const chCurr = ch.estimate || 0;
+      origSum += chOrig;
+      currSum += chCurr;
+      if (chCurr !== chOrig) changedCount += 1;
+    }
+    if (anyEstimated && (origSum > 0 || currSum > 0)) {
+      const delta = currSum - origSum;
+      const pct = origSum > 0 ? (delta / origSum) * 100 : 0;
+      childDriftByParent[parent.id] = { origSum, currSum, delta, pct, changedCount };
+    }
+  }
+
+  // Compute drift: (current - original) / original. Under "children" rollup mode, if the
+  // issue is a parent with sub-issue drift, prefer the rolled-up delta as the authoritative
+  // drift for that row — the parent's own estimate is by definition stale once children exist.
   const withDrift = analyzed.map((a) => {
     const orig = a.analysis.originalEstimate;
     const curr = a.issue.estimate;
@@ -262,12 +288,21 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
     if (orig != null && curr != null && orig > 0) {
       drift = ((curr - orig) / orig) * 100;
     }
-    return { ...a, drift };
+    const subDrift = childDriftByParent[a.issue.id];
+    // Closed cycles with backfill disabled keep the legacy own-drift number so historical
+    // dashboards stay frozen in place. Everywhere else we let sub-issue drift flow through.
+    const cycleIsClosed = !!cycle?.completedAt;
+    const allowRollup = rollupMode === "children" && (!cycleIsClosed || backfillClosed);
+    let effectiveDrift = drift;
+    if (allowRollup && subDrift && subDrift.origSum > 0) {
+      effectiveDrift = subDrift.pct;
+    }
+    return { ...a, drift, subDrift: (allowRollup ? subDrift : null) || null, effectiveDrift };
   });
 
-  // Sort
+  // Sort. Drift sort uses effective drift so parents whose sub-issues moved float up too.
   const sorted = [...withDrift].sort((a, b) => {
-    if (sortBy === "drift") return Math.abs(b.drift) - Math.abs(a.drift);
+    if (sortBy === "drift") return Math.abs(b.effectiveDrift) - Math.abs(a.effectiveDrift);
     if (sortBy === "name") return (a.issue.assigneeName || "").localeCompare(b.issue.assigneeName || "");
     return a.issue.identifier.localeCompare(b.issue.identifier);
   });
@@ -369,7 +404,7 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
               <span style={{ textAlign: "right" }}>Actual</span>
             </div>
 
-            {sorted.map(({ issue, analysis, drift }) => (
+            {sorted.map(({ issue, analysis, drift, subDrift }) => (
               <div key={issue.id} style={{
                 display: "grid",
                 gridTemplateColumns: "20px 60px 1fr 90px 150px 110px 44px",
@@ -430,6 +465,20 @@ export default function EstimatesView({ issues, cycle, avatars = {} }) {
                   <ChangeBadge changes={analysis.preSprintChanges} label="pre" color={c.yellow} c={c} u={u} />
                   <ChangeBadge changes={analysis.preStartChanges} label="plan" color={c.accent} c={c} u={u} />
                   <ChangeBadge changes={analysis.postStartChanges} label="wip" color={c.red} c={c} u={u} />
+                  {subDrift && subDrift.delta !== 0 && (
+                    <span
+                      title={`Sub-issues went from ${subDrift.origSum}${u} to ${subDrift.currSum}${u} (${subDrift.changedCount} changed).`}
+                      style={{
+                        fontSize: 10, fontFamily: MONO, padding: "1px 6px",
+                        borderRadius: 3,
+                        background: `${subDrift.delta > 0 ? c.red : c.green}14`,
+                        color: subDrift.delta > 0 ? c.red : c.green,
+                        border: `1px dashed ${subDrift.delta > 0 ? c.red : c.green}55`,
+                        whiteSpace: "nowrap",
+                      }}>
+                      \u21B3 subs {subDrift.delta > 0 ? "+" : ""}{subDrift.delta}{u}
+                    </span>
+                  )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <ActualHoursInput issueId={issue.id} value={actualHoursMap[issue.id] || 0} c={c} onChange={saveActualHours} u={u} />

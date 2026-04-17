@@ -13,9 +13,11 @@ function dayLabel(d) {
   return { day, num };
 }
 
-export default function AvailabilityCalendar({ people, cycle, teamId, onCapacitiesChange }) {
+export default function AvailabilityCalendar({ people, cycle, teamId, onCapacitiesChange, defaultPerDay = 2 }) {
   const { colors: c } = useTheme();
-  const [availability, setAvailability] = useState({ pointsPerDay: 2, people: {} });
+  // Hours-per-day is a tenant-level preference, not per-cycle. This component only
+  // edits per-person off-day patterns.
+  const [offsByPerson, setOffsByPerson] = useState({});
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef(null);
 
@@ -31,45 +33,43 @@ export default function AvailabilityCalendar({ people, cycle, teamId, onCapaciti
     setLoaded(false);
     loadAvailability(teamId, cycle.id).then((data) => {
       if (!cancelled) {
-        setAvailability(data);
+        setOffsByPerson(data?.people || {});
         setLoaded(true);
       }
     });
     return () => { cancelled = true; };
   }, [teamId, cycle.id]);
 
+  const availability = { pointsPerDay: defaultPerDay, people: offsByPerson };
+
   // Compute and notify capacities on every change
   useEffect(() => {
     const caps = computeCapacities(availability, people, cycle.startsAt, cycle.endsAt);
     onCapacitiesChange(caps);
-  }, [availability, people, cycle, onCapacitiesChange]);
+  }, [offsByPerson, defaultPerDay, people, cycle, onCapacitiesChange]);
 
-  // Debounced save to server
+  // Debounced save to server — only the off-day grid is persisted per cycle.
   useEffect(() => {
     if (!loaded) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveAvailability(teamId, cycle.id, availability);
+      saveAvailability(teamId, cycle.id, { pointsPerDay: defaultPerDay, people: offsByPerson });
     }, 500);
     return () => clearTimeout(saveTimer.current);
-  }, [availability, loaded, teamId, cycle.id]);
+  }, [offsByPerson, loaded, teamId, cycle.id, defaultPerDay]);
 
   const workdays = getWorkdays(cycle.startsAt, cycle.endsAt);
 
   const toggleCell = useCallback((person, dateKey) => {
-    setAvailability((prev) => {
-      const personOffs = { ...(prev.people?.[person] || {}) };
+    setOffsByPerson((prev) => {
+      const personOffs = { ...(prev?.[person] || {}) };
       const current = personOffs[dateKey] || "available";
       const idx = STATE_CYCLE.indexOf(current);
       const next = STATE_CYCLE[(idx + 1) % STATE_CYCLE.length];
       if (next === "available") delete personOffs[dateKey];
       else personOffs[dateKey] = next;
-      return { ...prev, people: { ...prev.people, [person]: personOffs } };
+      return { ...prev, [person]: personOffs };
     });
-  }, []);
-
-  const setPpd = useCallback((val) => {
-    setAvailability((prev) => ({ ...prev, pointsPerDay: val }));
   }, []);
 
   const caps = computeCapacities(availability, people, cycle.startsAt, cycle.endsAt);
@@ -81,18 +81,8 @@ export default function AvailabilityCalendar({ people, cycle, teamId, onCapaciti
         <div style={{ fontSize: 15, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
           Availability &middot; Cycle {cycle.number}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 14, color: c.textMuted }}>hrs/day</span>
-          <input
-            type="number" min={0.5} step={0.5}
-            value={availability.pointsPerDay}
-            onChange={(e) => setPpd(parseFloat(e.target.value) || 0)}
-            style={{
-              width: 56, padding: "5px 8px", fontSize: 16, fontFamily: MONO,
-              background: c.input, border: `1px solid ${c.border}`, borderRadius: 4,
-              color: c.text, textAlign: "center", outline: "none",
-            }}
-          />
+        <div style={{ fontSize: 12, color: c.textMuted }}>
+          <span style={{ fontFamily: MONO }}>{defaultPerDay}</span> per day (set in Preferences)
         </div>
       </div>
 

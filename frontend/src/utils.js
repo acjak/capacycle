@@ -148,9 +148,60 @@ export function enrichIssues(nodes) {
   return all.filter((i) => !childIds.has(i.id));
 }
 
-// Total estimate for an issue including its children
+// Read the estimate rollup mode from tenant settings, with a safe default.
+export function getEstimateMode(settings) {
+  const m = settings?.estimate_rollup;
+  return m === "parent" ? "parent" : "children";
+}
+
+// Effective single-issue estimate under a given rollup mode.
+//   mode === "parent":   the issue's own estimate (ignore children).
+//   mode === "children": sum of children's estimates if any child has one,
+//                        otherwise fall back to the issue's own estimate.
+// Does not double-count: never sums parent + children.
+export function effectiveEstimate(issue, mode = "children") {
+  const own = issue.estimate || 0;
+  if (mode === "parent") return own;
+  const children = issue.children || [];
+  const anyChildEstimated = children.some((ch) => ch.estimate != null);
+  if (!anyChildEstimated) return own;
+  return children.reduce((s, ch) => s + (ch.estimate || 0), 0);
+}
+
+// Sum effective estimates across a list of top-level issues (children already rolled in).
+export function sumEffectiveEstimates(issues, mode = "children") {
+  return (issues || []).reduce((s, i) => s + effectiveEstimate(i, mode), 0);
+}
+
+// Sum estimates across top-level issues, optionally filtering individual units by predicate.
+// Under "children" mode, when a parent has estimated children, the predicate is applied to
+// each child (not the parent) — so e.g. "completed" means "count completed children's estimates".
+// Callers should pass TOP-LEVEL issues (with .children populated), not a flattened list.
+export function sumEstimates(topLevelIssues, mode = "children", predicate = null) {
+  let total = 0;
+  for (const i of topLevelIssues || []) {
+    if (mode === "parent") {
+      if (!predicate || predicate(i)) total += i.estimate || 0;
+      continue;
+    }
+    const children = i.children || [];
+    const anyChildEstimated = children.some((ch) => ch.estimate != null);
+    if (anyChildEstimated) {
+      for (const ch of children) {
+        if (!predicate || predicate(ch)) total += ch.estimate || 0;
+      }
+    } else {
+      if (!predicate || predicate(i)) total += i.estimate || 0;
+    }
+  }
+  return total;
+}
+
+// Legacy alias — additive parent + children. Kept only for any external callers; prefer
+// effectiveEstimate for new code, since parent estimates in Linear are almost always a
+// pre-decomposition estimate, not an orthogonal component.
 export function totalEstimate(issue) {
-  return (issue.estimate || 0) + (issue.children || []).reduce((s, ch) => s + (ch.estimate || 0), 0);
+  return effectiveEstimate(issue, "children");
 }
 
 // Flat list of an issue + its children (for counting)

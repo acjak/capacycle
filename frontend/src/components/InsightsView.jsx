@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { linearQuery, ISSUE_HISTORY_QUERY, fetchCycleIssues } from "../api.js";
 import { useTheme } from "../theme.jsx";
-import { flatIssues, priorityLabel, statusIcon, statusColor } from "../utils.js";
+import { flatIssues, priorityLabel, statusIcon, statusColor, sumEstimates } from "../utils.js";
 import { useUnit } from "../useUnit.js";
 
 const MONO = "'JetBrains Mono', 'SF Mono', monospace";
@@ -38,12 +38,12 @@ function analyzeHistory(history, cycleStartsAt) {
 
 // --- Progress Panel ---
 
-function ProgressPanel({ issues, c, u }) {
-  // Group issues by project, then by milestone within project
+function ProgressPanel({ issues, c, u, rollupMode = "children" }) {
+  // Group TOP-LEVEL issues by project + milestone (flat list would double-count under rollup).
   const byProject = {};
   const allFlat = flatIssues(issues);
 
-  for (const issue of allFlat) {
+  for (const issue of issues) {
     const projKey = issue.projectId || "__none__";
     const projName = issue.projectName || "No project";
     if (!byProject[projKey]) byProject[projKey] = { name: projName, slugId: issue.projectSlugId, issues: [], milestones: {} };
@@ -58,18 +58,21 @@ function ProgressPanel({ issues, c, u }) {
   }
 
   const projectStats = Object.entries(byProject).map(([id, proj]) => {
-    const total = proj.issues.reduce((s, i) => s + (i.estimate || 0), 0);
-    const done = proj.issues.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+    const total = sumEstimates(proj.issues, rollupMode);
+    const done = sumEstimates(proj.issues, rollupMode, (i) => i.stateType === "completed");
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
     const milestoneStats = Object.entries(proj.milestones).map(([msId, ms]) => {
-      const msTotal = ms.issues.reduce((s, i) => s + (i.estimate || 0), 0);
-      const msDone = ms.issues.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+      const msTotal = sumEstimates(ms.issues, rollupMode);
+      const msDone = sumEstimates(ms.issues, rollupMode, (i) => i.stateType === "completed");
       const msPct = msTotal > 0 ? Math.round((msDone / msTotal) * 100) : 0;
-      return { id: msId, name: ms.name, total: msTotal, done: msDone, pct: msPct, count: ms.issues.length };
+      // count uses flatIssues so sub-issue counts are still visible
+      const msFlat = flatIssues(ms.issues);
+      return { id: msId, name: ms.name, total: msTotal, done: msDone, pct: msPct, count: msFlat.length };
     }).sort((a, b) => b.pct - a.pct);
 
-    return { id, name: proj.name, slugId: proj.slugId, total, done, pct, count: proj.issues.length, milestones: milestoneStats };
+    const projFlat = flatIssues(proj.issues);
+    return { id, name: proj.name, slugId: proj.slugId, total, done, pct, count: projFlat.length, milestones: milestoneStats };
   }).filter((p) => p.total > 0).sort((a, b) => b.pct - a.pct);
 
   if (projectStats.length === 0) {
@@ -77,8 +80,8 @@ function ProgressPanel({ issues, c, u }) {
   }
 
   // Overall cycle stats for comparison
-  const cycleTotal = allFlat.reduce((s, i) => s + (i.estimate || 0), 0);
-  const cycleDone = allFlat.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+  const cycleTotal = sumEstimates(issues, rollupMode);
+  const cycleDone = sumEstimates(issues, rollupMode, (i) => i.stateType === "completed");
   const cyclePct = cycleTotal > 0 ? Math.round((cycleDone / cycleTotal) * 100) : 0;
 
   return (
@@ -585,7 +588,7 @@ function CarryOverPanel({ issues, cycle, cycles, c, u }) {
 
 // --- Main InsightsView ---
 
-export default function InsightsView({ issues, cycle, cycles = [], avatars = {} }) {
+export default function InsightsView({ issues, cycle, cycles = [], avatars = {}, rollupMode = "children" }) {
   const { colors: c } = useTheme();
   const u = useUnit();
   const [historyMap, setHistoryMap] = useState({});
@@ -652,7 +655,7 @@ export default function InsightsView({ issues, cycle, cycles = [], avatars = {} 
       </div>
 
       {activePanel === "progress" && (
-        <ProgressPanel issues={issues} c={c} u={u} />
+        <ProgressPanel issues={issues} c={c} u={u} rollupMode={rollupMode} />
       )}
 
       {activePanel === "drift" && (

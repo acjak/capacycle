@@ -7,6 +7,7 @@ import {
 import {
   pickActiveCycle, groupByAssignee, enrichIssues, flatIssues,
   loadCapacities, saveCapacities, loadAvailability, computeCapacities, formatDate,
+  sumEstimates,
 } from "./utils.js";
 import { useTheme } from "./theme.jsx";
 import { useAuth } from "./AuthContext.jsx";
@@ -34,7 +35,12 @@ const SANS = "'DM Sans', system-ui, sans-serif";
 
 export default function App({ demo = false }) {
   const { colors, mode, toggle, fontScale, setFontScale, fontSizeLabel, fontScales } = useTheme();
-  const { auth, logout, showPlanSelection, updateSettings } = useAuth();
+  const { auth, logout, showPlanSelection, updateSettings: cloudUpdateSettings } = useAuth();
+  // Demo mode uses local state for owner settings since there's no tenant to persist against.
+  const [demoSettings, setDemoSettings] = useState({});
+  const updateSettings = demo
+    ? (patch) => setDemoSettings((prev) => ({ ...prev, ...patch }))
+    : cloudUpdateSettings;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [step, setStep] = useState("Loading...");
@@ -60,10 +66,32 @@ export default function App({ demo = false }) {
   const [shareNote, setShareNote] = useState("");
   const [shareLink, setShareLink] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
+
+  // Settings: cloud mode reads from tenant settings, demo mode reads from local state.
+  const activeSettings = demo ? demoSettings : (auth && typeof auth === "object" ? auth.settings : null) || {};
+  const unit = activeSettings.unit || "hours";
+  const u = unit === "points" ? "p" : "h";
+  const rollupMode = activeSettings.estimate_rollup || "children";
+  const backfillClosed = !!activeSettings.backfill_closed_cycles;
+  const defaultPerDay = activeSettings.default_points_per_day ?? 2;
 
   // Live update listener
   const selectedTeamRef = useRef(null);
   const activeCycleRef = useRef(null);
+
+  // Hours/points-per-day is a tenant-wide preference (not per-cycle). Whenever it
+  // changes, recompute capacities for the active cycle using the off-day grid in
+  // availability — but always with the preference as the per-day rate.
+  useEffect(() => {
+    if (!selectedTeam || !activeCycle || people.length === 0) return;
+    let cancelled = false;
+    loadAvailability(selectedTeam.id, activeCycle.id).then((avail) => {
+      if (cancelled) return;
+      setCapacities(computeCapacities({ ...avail, pointsPerDay: defaultPerDay }, people, activeCycle.startsAt, activeCycle.endsAt));
+    });
+    return () => { cancelled = true; };
+  }, [defaultPerDay, selectedTeam?.id, activeCycle?.id, people.join("|")]);
 
   useEffect(() => {
     if (demo) return; // No live updates in demo mode
@@ -189,7 +217,7 @@ export default function App({ demo = false }) {
 
       if (picked) {
         const avail = await loadAvailability(team.id, picked.id);
-        setCapacities(computeCapacities(avail, uniq, picked.startsAt, picked.endsAt));
+        setCapacities(computeCapacities({ ...avail, pointsPerDay: defaultPerDay }, uniq, picked.startsAt, picked.endsAt));
       } else {
         const saved = loadCapacities(team.id);
         const caps = { ...saved };
@@ -214,7 +242,7 @@ export default function App({ demo = false }) {
       const uniq = [...new Set([...teamMembers, ...fromIssues])];
       setPeople(uniq);
       const avail = await loadAvailability(selectedTeam.id, cycle.id);
-      setCapacities(computeCapacities(avail, uniq, cycle.startsAt, cycle.endsAt));
+      setCapacities(computeCapacities({ ...avail, pointsPerDay: defaultPerDay }, uniq, cycle.startsAt, cycle.endsAt));
     } catch (e) {
       setError("Failed: " + e.message);
     }
@@ -245,15 +273,11 @@ export default function App({ demo = false }) {
     loadCycleIssues(c);
   };
 
-  // Unit setting: "points" or "hours" (default "hours")
-  const unit = (auth && typeof auth === "object" && auth.settings?.unit) || "hours";
-  const u = unit === "points" ? "p" : "h";
-
   const byPerson = groupByAssignee(issues, people);
   const allFlat = flatIssues(issues);
-  const totalPts = allFlat.reduce((s, i) => s + (i.estimate || 0), 0);
+  const totalPts = sumEstimates(issues, rollupMode);
   const totalCap = people.reduce((s, p) => s + (capacities[p] || 0), 0);
-  const donePts = allFlat.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+  const donePts = sumEstimates(issues, rollupMode, (i) => i.stateType === "completed");
   const unestCount = allFlat.filter((i) => !i.estimate).length;
   const pctDone = totalPts > 0 ? Math.round((donePts / totalPts) * 100) : 0;
 
@@ -261,9 +285,9 @@ export default function App({ demo = false }) {
     if (!selectedTeam || !activeCycle) return;
     setShareLoading(true);
     try {
-      // Build per-project progress snapshot
+      // Build per-project progress snapshot from top-level issues (so rollup totals don't double-count).
       const projectMap = {};
-      for (const issue of allFlat) {
+      for (const issue of issues) {
         const key = issue.projectId || "__none__";
         const name = issue.projectName || "No project";
         if (!projectMap[key]) projectMap[key] = { name, issues: [], milestones: {} };
@@ -276,12 +300,12 @@ export default function App({ demo = false }) {
         }
       }
       const projects = Object.values(projectMap).map((proj) => {
-        const total = proj.issues.reduce((s, i) => s + (i.estimate || 0), 0);
-        const done = proj.issues.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+        const total = sumEstimates(proj.issues, rollupMode);
+        const done = sumEstimates(proj.issues, rollupMode, (i) => i.stateType === "completed");
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         const milestones = Object.values(proj.milestones).map((ms) => {
-          const msTotal = ms.issues.reduce((s, i) => s + (i.estimate || 0), 0);
-          const msDone = ms.issues.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+          const msTotal = sumEstimates(ms.issues, rollupMode);
+          const msDone = sumEstimates(ms.issues, rollupMode, (i) => i.stateType === "completed");
           return { name: ms.name, total: msTotal, done: msDone, pct: msTotal > 0 ? Math.round((msDone / msTotal) * 100) : 0 };
         });
         return { name: proj.name, total, done, pct, milestones };
@@ -458,21 +482,26 @@ export default function App({ demo = false }) {
                     </div>
                   </div>
 
-                  {/* Unit setting — owner only in cloud mode */}
-                  {auth && auth !== "standalone" && auth.user?.role === "owner" && (
-                    <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 12, color: c.text }}>Estimates</span>
-                      <div style={{ display: "flex", gap: 2 }}>
-                        {[{ id: "hours", label: "Hours" }, { id: "points", label: "Points" }].map((opt) => (
-                          <button key={opt.id} onClick={() => updateSettings({ unit: opt.id })} style={{
-                            background: unit === opt.id ? c.accentBg : "transparent",
-                            border: `1px solid ${unit === opt.id ? c.accent : "transparent"}`,
-                            borderRadius: 3, padding: "2px 7px", fontSize: 11, fontFamily: MONO,
-                            color: unit === opt.id ? c.accent : c.textMuted,
-                            cursor: "pointer",
-                          }}>{opt.label}</button>
-                        ))}
-                      </div>
+                  {/* Workspace preferences — owner only, always in demo */}
+                  {(demo || (auth && auth !== "standalone" && auth.user?.role === "owner")) && (
+                    <div style={{ padding: "8px 12px" }}>
+                      <button onClick={() => { setShowUserMenu(false); setShowPrefs(true); }} style={{
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        width: "100%",
+                        background: c.accentBg, color: c.accent,
+                        border: `1px solid ${c.accent}`, borderRadius: 6,
+                        padding: "7px 14px", fontSize: 12, fontWeight: 600,
+                        cursor: "pointer", fontFamily: SANS,
+                      }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = c.accent; e.currentTarget.style.color = "#fff"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = c.accentBg; e.currentTarget.style.color = c.accent; }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                        Preferences
+                      </button>
                     </div>
                   )}
 
@@ -677,6 +706,136 @@ export default function App({ demo = false }) {
           </div>
         </>
       )}
+      {showPrefs && (
+        <>
+          <div onClick={() => setShowPrefs(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200 }} />
+          <div role="dialog" aria-modal="true" aria-labelledby="prefs-title" style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: c.card, border: `1px solid ${c.border}`, borderRadius: 12,
+            padding: "28px 32px", zIndex: 201, minWidth: 520, maxWidth: 620,
+            maxHeight: "calc(100vh - 64px)", overflowY: "auto",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div id="prefs-title" style={{ fontSize: 18, fontWeight: 700 }}>Preferences</div>
+              <button onClick={() => setShowPrefs(false)} aria-label="Close" style={{
+                background: "transparent", border: "none", color: c.textMuted,
+                cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 4,
+              }}>&times;</button>
+            </div>
+            <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 20 }}>
+              Workspace-wide settings. {demo ? "In demo mode these apply locally, for this session only." : "Applies to everyone on the team."}
+            </div>
+
+            {/* Estimate unit */}
+            <div style={{ padding: "16px 0", borderTop: `1px solid ${c.divider}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Estimate unit</div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                    How estimates are displayed across capacity, burndown, and forecasting views.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                  {[{ id: "hours", label: "Hours" }, { id: "points", label: "Points" }].map((opt) => (
+                    <button key={opt.id} onClick={() => updateSettings({ unit: opt.id })} style={{
+                      background: unit === opt.id ? c.accentBg : "transparent",
+                      border: `1px solid ${unit === opt.id ? c.accent : c.border}`,
+                      borderRadius: 4, padding: "5px 12px", fontSize: 12, fontFamily: MONO,
+                      color: unit === opt.id ? c.accent : c.textMuted,
+                      cursor: "pointer",
+                    }}>{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Default per-day capacity */}
+            <div style={{ padding: "16px 0", borderTop: `1px solid ${c.divider}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>
+                    Default {unit === "points" ? "points" : "hours"} per day
+                  </div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                    Per-person daily capacity used when a cycle hasn't been customised. Individual cycles can still override this in the availability calendar.
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <input
+                    type="number" min={0.5} step={0.5}
+                    value={defaultPerDay}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0) updateSettings({ default_points_per_day: v });
+                    }}
+                    style={{
+                      width: 72, padding: "5px 10px", fontSize: 14, fontFamily: MONO,
+                      background: c.input, border: `1px solid ${c.border}`, borderRadius: 4,
+                      color: c.text, textAlign: "center", outline: "none",
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: c.textMuted, fontFamily: MONO }}>{u}/day</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Parent estimate rollup */}
+            <div style={{ padding: "16px 0", borderTop: `1px solid ${c.divider}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Parent estimate</div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                    {rollupMode === "children"
+                      ? "When a parent has estimated sub-issues, use the sum of the sub-issues. Otherwise use the parent's own estimate. Recommended because Fibonacci estimates rarely add up cleanly."
+                      : "Always trust the parent's estimate. Ignore sub-issue estimates entirely."}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                  {[{ id: "children", label: "Sum of subs" }, { id: "parent", label: "Own" }].map((opt) => (
+                    <button key={opt.id} onClick={() => updateSettings({ estimate_rollup: opt.id })} style={{
+                      background: rollupMode === opt.id ? c.accentBg : "transparent",
+                      border: `1px solid ${rollupMode === opt.id ? c.accent : c.border}`,
+                      borderRadius: 4, padding: "5px 12px", fontSize: 12, fontFamily: MONO,
+                      color: rollupMode === opt.id ? c.accent : c.textMuted,
+                      cursor: "pointer",
+                    }}>{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Backfill closed cycles */}
+            <div style={{ padding: "16px 0", borderTop: `1px solid ${c.divider}` }}>
+              <label style={{ display: "flex", gap: 12, alignItems: "flex-start", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={backfillClosed}
+                  onChange={(e) => updateSettings({ backfill_closed_cycles: e.target.checked })}
+                  style={{ marginTop: 3, cursor: "pointer", width: 16, height: 16 }}
+                />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>
+                    Adjust closed cycles when sub-issue estimates change
+                  </div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                    Off keeps historical drift frozen as of when each cycle ended. On re-computes past cycles' drift when a sub-issue is later re-estimated — more honest, but historical numbers can move.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button onClick={() => setShowPrefs(false)} style={{
+                background: c.accent, border: "none", borderRadius: 6,
+                padding: "8px 20px", fontSize: 12, fontWeight: 600, color: "#fff",
+                cursor: "pointer", fontFamily: SANS,
+              }}>Done</button>
+            </div>
+          </div>
+        </>
+      )}
+
       {loading && <div style={{ textAlign: "center", padding: 60, color: c.textMuted }}><div style={{ fontSize: 13 }}>{step}</div></div>}
 
       {/* Forecasting view (replaces cycle content) */}
@@ -692,7 +851,7 @@ export default function App({ demo = false }) {
       )}
 
       {!loading && selectedTeam && showInsights && !showForecasting && !showStandup && (
-        <InsightsView issues={issues} cycle={activeCycle} cycles={cycles} avatars={avatars} />
+        <InsightsView issues={issues} cycle={activeCycle} cycles={cycles} avatars={avatars} rollupMode={rollupMode} />
       )}
 
       {!loading && selectedTeam && !showForecasting && !showInsights && !showStandup && (
@@ -747,13 +906,37 @@ export default function App({ demo = false }) {
                       ))}
                     </div>
                   </div>
-                  <BurndownChart cycle={activeCycle} mode={burndownMode} issues={issues} />
+                  <BurndownChart cycle={activeCycle} mode={burndownMode} issues={issues} rollupMode={rollupMode} />
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5, fontSize: 10, color: c.textMuted }}>Per-person load</div>
                     {people.map((p) => {
-                      const pI = flatIssues(byPerson[p] || []);
-                      const pts = pI.reduce((s, i) => s + (i.estimate || 0), 0);
-                      const dp = pI.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0);
+                      const personTop = byPerson[p] || [];
+                      // Per-person load: ghost parents only contribute via their same-assignee children.
+                      let pts = 0, dp = 0;
+                      for (const i of personTop) {
+                        if (i.ghost) {
+                          for (const ch of (i.children || [])) {
+                            pts += ch.estimate || 0;
+                            if (ch.stateType === "completed") dp += ch.estimate || 0;
+                          }
+                        } else if (rollupMode === "parent") {
+                          pts += i.estimate || 0;
+                          if (i.stateType === "completed") dp += i.estimate || 0;
+                        } else {
+                          const kids = i.children || [];
+                          const any = kids.some((ch) => ch.estimate != null);
+                          if (any) {
+                            for (const ch of kids) {
+                              pts += ch.estimate || 0;
+                              if (ch.stateType === "completed") dp += ch.estimate || 0;
+                            }
+                          } else {
+                            pts += i.estimate || 0;
+                            if (i.stateType === "completed") dp += i.estimate || 0;
+                          }
+                        }
+                      }
+                      const pI = flatIssues(personTop);
                       return (
                         <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderTop: `1px solid ${c.divider}` }}>
                           {avatars[p] ? (
@@ -800,7 +983,7 @@ export default function App({ demo = false }) {
 
           {/* Estimates tab */}
           {activeTab === "estimates" && (
-            <EstimatesView issues={issues} cycle={activeCycle} avatars={avatars} />
+            <EstimatesView issues={issues} cycle={activeCycle} avatars={avatars} rollupMode={rollupMode} backfillClosed={backfillClosed} />
           )}
 
           {/* Board tab */}
@@ -837,6 +1020,7 @@ export default function App({ demo = false }) {
                   cycle={activeCycle}
                   teamId={selectedTeam.id}
                   onCapacitiesChange={setCapacities}
+                  defaultPerDay={defaultPerDay}
                 />
               )}
               {showSettings && !activeCycle && (

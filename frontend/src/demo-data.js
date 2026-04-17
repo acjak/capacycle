@@ -32,31 +32,31 @@ for (let i = 0; i < CYCLE_COUNT; i++) {
 }
 
 // --- Scope history generators ---
+// Both generators produce arrays whose endpoints exactly match the cycle's live totals,
+// so the burndown/velocity charts agree with what the user sees in the capacity and
+// estimates views. The interior is a straight interpolation (good enough for a demo).
 
-function makeScopeHistory(initial, days, driftPct) {
-  const arr = [initial];
+function makeScopeHistory(start, end, days) {
+  const arr = [start];
   for (let i = 1; i <= days; i++) {
-    const drift = initial * (driftPct / 100) * (i / days);
-    arr.push(Math.round(initial + drift));
+    arr.push(Math.round(start + (end - start) * (i / days)));
   }
   return arr;
 }
 
-function makeCompletedHistory(total, days, completedDays) {
+function makeCompletedHistory(finalDone, days) {
   const arr = [0];
   for (let i = 1; i <= days; i++) {
-    if (i <= completedDays) {
-      arr.push(Math.round(total * (i / days) * (0.75 + Math.random() * 0.15)));
-    } else {
-      arr.push(arr[arr.length - 1]);
-    }
+    arr.push(Math.round(finalDone * (i / days)));
   }
   return arr;
 }
 
-function makeIssueCountHistory(initial, days) {
-  const arr = [initial];
-  for (let i = 1; i <= days; i++) arr.push(initial + Math.floor(i / 5));
+function makeIssueCountHistory(start, end, days) {
+  const arr = [start];
+  for (let i = 1; i <= days; i++) {
+    arr.push(Math.round(start + (end - start) * (i / days)));
+  }
   return arr;
 }
 
@@ -255,20 +255,28 @@ for (let i = 0; i < CYCLE_COUNT; i++) {
 
   const totalEst = issues.reduce((s, iss) => s + (iss.estimate || 0), 0);
   const doneEst = issues.filter((iss) => iss.state.type === "completed").reduce((s, iss) => s + (iss.estimate || 0), 0);
+  const doneCount = issues.filter((iss) => iss.state.type === "completed").length;
+  const inProgCount = issues.filter((iss) => iss.state.type === "started").length;
+  const inProgEst = issues.filter((iss) => iss.state.type === "started").reduce((s, iss) => s + (iss.estimate || 0), 0);
   const days = isActive ? CURRENT_ELAPSED : CYCLE_DAYS;
   const driftPct = [5, -3, 8, 12, 2, -5, 15, 6, 10, 4][i] || 5;
-  const completionRate = isActive ? (doneEst / (totalEst || 1)) : [0.82, 0.75, 0.88, 0.70, 0.92, 0.78, 0.65, 0.85, 0.80, 0.73][i] || 0.8;
+  // Work backward from the live final scope to a plausible starting point, so the history
+  // ends at the real `totalEst` that every other view is summing.
+  const startScope = Math.round(totalEst / (1 + driftPct / 100));
+  const startIssueCount = Math.max(1, Math.round(issues.length / (1 + driftPct / 100)));
+  const completionRate = totalEst > 0 ? doneEst / totalEst : 0;
 
   cycleNodes.push({
     id: cycleId, number: cycleNumber, name: null,
     startsAt: isoDate(range.start), endsAt: isoDate(range.end),
     completedAt: isActive ? null : isoDate(range.end),
     progress: completionRate,
-    scopeHistory: makeScopeHistory(totalEst, days, driftPct),
-    completedScopeHistory: makeCompletedHistory(totalEst, days, days),
-    issueCountHistory: makeIssueCountHistory(issues.length, days),
-    completedIssueCountHistory: makeCompletedHistory(issues.length, days, days),
-    inProgressScopeHistory: makeScopeHistory(0, days, 0).map(() => Math.round(6 + Math.random() * 8)),
+    scopeHistory: makeScopeHistory(startScope, totalEst, days),
+    completedScopeHistory: makeCompletedHistory(doneEst, days),
+    issueCountHistory: makeIssueCountHistory(startIssueCount, issues.length, days),
+    completedIssueCountHistory: makeCompletedHistory(doneCount, days),
+    // In-progress stays roughly flat around the current in-progress total.
+    inProgressScopeHistory: Array.from({ length: days + 1 }, () => inProgEst),
   });
 
   cycleIssueData[cycleId] = issues;

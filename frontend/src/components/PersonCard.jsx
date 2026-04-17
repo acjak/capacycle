@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import CapacityBar from "./CapacityBar.jsx";
-import { statusIcon, statusColor, priorityColor, priorityLabel, initials, totalEstimate, flatIssues } from "../utils.js";
+import { statusIcon, statusColor, priorityColor, priorityLabel, initials, effectiveEstimate, getEstimateMode, flatIssues } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 import { useUnit } from "../useUnit.js";
+import { useAuth } from "../AuthContext.jsx";
 
-function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, childrenExpanded = false, onToggleChildren, ghost = false }) {
+function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, childrenExpanded = false, onToggleChildren, ghost = false, rollupMode = "children" }) {
   const u = useUnit();
-  const est = ghost ? null : (hasChildren && !childrenExpanded ? totalEstimate(issue) : issue.estimate);
+  const est = ghost ? null : (hasChildren && !childrenExpanded ? effectiveEstimate(issue, rollupMode) : issue.estimate);
   const showToggle = hasChildren;
 
   return (
@@ -104,6 +105,8 @@ function IssueRow({ issue, c, indent = 0, isLast = true, hasChildren = false, ch
 
 export default function PersonCard({ name, issues, capacity, expanded: expandedProp, avatarUrl }) {
   const { colors: c } = useTheme();
+  const { auth } = useAuth();
+  const rollupMode = getEstimateMode(auth?.settings);
   const [expanded, setExpanded] = useState(expandedProp ?? true);
   const [expandedParents, setExpandedParents] = useState({});
 
@@ -111,13 +114,49 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
     if (expandedProp !== undefined) setExpanded(expandedProp);
   }, [expandedProp]);
 
-  // For stats, exclude ghost parents (only count their children which are assigned here)
+  // For counts, flatten parent + children. For estimate totals, respect the rollup mode
+  // so we don't double-count parent estimates against children.
   const ownIssues = [];
   issues.forEach((i) => {
     if (!i.ghost) ownIssues.push(i);
     (i.children || []).forEach((ch) => ownIssues.push(ch));
   });
-  const totalEst = ownIssues.reduce((s, i) => s + (i.estimate || 0), 0);
+  const estimateFor = (issue) => {
+    // Ghost parent: only its same-assignee children count; parent estimate belongs elsewhere.
+    // Non-ghost under "parent" mode: trust parent estimate, ignore children contribution here
+    // (children already in ownIssues contribute under "parent" mode via the flatten — but we
+    //  handle the sum below instead of this per-issue helper).
+    return effectiveEstimate(issue, rollupMode);
+  };
+  let totalEst = 0;
+  let doneEst = 0;
+  for (const i of issues) {
+    if (i.ghost) {
+      // Parent belongs elsewhere. Only the same-assignee children listed here count for me.
+      for (const ch of (i.children || [])) {
+        totalEst += ch.estimate || 0;
+        if (ch.stateType === "completed") doneEst += ch.estimate || 0;
+      }
+    } else if (rollupMode === "parent") {
+      // In "parent" mode, the parent's estimate represents all the work under it.
+      totalEst += i.estimate || 0;
+      if (i.stateType === "completed") doneEst += i.estimate || 0;
+    } else {
+      // "children" mode, non-ghost. If any same-assignee children have estimates, use their
+      // sum; otherwise fall back to the parent's own estimate.
+      const sameAssigneeChildren = i.children || [];
+      const anyEst = sameAssigneeChildren.some((ch) => ch.estimate != null);
+      if (anyEst) {
+        for (const ch of sameAssigneeChildren) {
+          totalEst += ch.estimate || 0;
+          if (ch.stateType === "completed") doneEst += ch.estimate || 0;
+        }
+      } else {
+        totalEst += i.estimate || 0;
+        if (i.stateType === "completed") doneEst += i.estimate || 0;
+      }
+    }
+  }
   const inProg = ownIssues.filter((i) => i.stateType === "started");
   const todo = ownIssues.filter((i) => i.stateType === "unstarted" || i.stateType === "backlog");
   const done = ownIssues.filter((i) => i.stateType === "completed");
@@ -176,7 +215,7 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
         )}
       </div>
 
-      <CapacityBar assigned={totalEst} capacity={capacity} done={done.reduce((s, i) => s + (i.estimate || 0), 0)} />
+      <CapacityBar assigned={totalEst} capacity={capacity} done={doneEst} />
 
       {expanded && (
         <>
@@ -196,6 +235,7 @@ export default function PersonCard({ name, issues, capacity, expanded: expandedP
                       childrenExpanded={childrenOpen}
                       onToggleChildren={() => toggleParent(issue.id)}
                       ghost={isGhost}
+                      rollupMode={rollupMode}
                     />
                     {hasChildren && childrenOpen && issue.children.map((child, idx) => (
                       <IssueRow

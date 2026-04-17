@@ -3,10 +3,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Area, AreaChart, ReferenceLine,
 } from "recharts";
-import { formatDate, flatIssues } from "../utils.js";
+import { formatDate, flatIssues, sumEstimates } from "../utils.js";
 import { useTheme } from "../theme.jsx";
 
-export default function BurndownChart({ cycle, mode = "hours", issues = [] }) {
+export default function BurndownChart({ cycle, mode = "hours", issues = [], rollupMode = "children" }) {
   const { colors: c } = useTheme();
   const scopeHist = mode === "hours" ? cycle.scopeHistory : cycle.issueCountHistory;
   const completedHist = mode === "hours" ? cycle.completedScopeHistory : cycle.completedIssueCountHistory;
@@ -19,16 +19,18 @@ export default function BurndownChart({ cycle, mode = "hours", issues = [] }) {
   const todayIdx = Math.floor((today - start) / 86400000);
   const hasData = scopeHist && scopeHist.length > 0;
 
-  // Compute live values from current issues for today
+  // Compute live values from current issues for today.
+  // Estimates go through the rollup-aware summer; counts stay on the flat list
+  // (each issue counts once regardless of rollup — we don't "count a parent as its children").
   const allFlat = flatIssues(issues);
   const liveScope = mode === "hours"
-    ? allFlat.reduce((s, i) => s + (i.estimate || 0), 0)
+    ? sumEstimates(issues, rollupMode)
     : allFlat.length;
   const liveCompleted = mode === "hours"
-    ? allFlat.filter((i) => i.stateType === "completed").reduce((s, i) => s + (i.estimate || 0), 0)
+    ? sumEstimates(issues, rollupMode, (i) => i.stateType === "completed")
     : allFlat.filter((i) => i.stateType === "completed").length;
   const liveInProgress = mode === "hours"
-    ? allFlat.filter((i) => i.stateType === "started").reduce((s, i) => s + (i.estimate || 0), 0)
+    ? sumEstimates(issues, rollupMode, (i) => i.stateType === "started")
     : allFlat.filter((i) => i.stateType === "started").length;
 
   const chartData = [];
